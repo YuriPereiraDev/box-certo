@@ -1,0 +1,28 @@
+# Node
+node_modules/
+dist/
+coverage/
+*.log
+*.tsbuildinfo
+
+# Ambiente
+.env
+.env.*
+!.env.example
+
+# Prisma (cliente gerado)
+apps/api/src/generated/
+
+# Flutter
+apps/app/.dart_tool/
+apps/app/build/
+apps/app/.flutter-plugins*
+apps/app/.packages
+
+# Editores / SO
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+Thumbs.db
+.DS_Store

@@ -1,0 +1,15 @@
+{
+  "name": "box-certo",
+  "private": true,
+  "description": "Box Certo — monorepo (API NestJS + app Flutter)",
+  "scripts": {
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "api:dev": "npm --prefix apps/api run start:dev",
+    "api:test": "npm --prefix apps/api run test",
+    "api:test:e2e": "npm --prefix apps/api run test:e2e",
+    "api:lint": "npm --prefix apps/api run lint",
+    "db:migrate": "npm --prefix apps/api exec -- prisma migrate dev",
+    "db:seed": "npm --prefix apps/api exec -- prisma db seed"
+  }
+}

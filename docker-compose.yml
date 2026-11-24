@@ -1,0 +1,70 @@
+name: box-certo
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-boxcerto}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-boxcerto}
+      POSTGRES_DB: ${POSTGRES_DB:-boxcerto}
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-boxcerto} -d ${POSTGRES_DB:-boxcerto}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Armazenamento compatível com S3 (SeaweedFS). Em produção: Cloudflare R2 ou S3.
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    restart: unless-stopped
+    entrypoint: >
+      /bin/sh -c '
+      printf "{\"identities\":[{\"name\":\"app\",\"credentials\":[{\"accessKey\":\"%s\",\"secretKey\":\"%s\"}],\"actions\":[\"Admin\",\"Read\",\"Write\",\"List\",\"Tagging\"]}]}" "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" > /tmp/s3.json &&
+      exec weed server -dir=/data -ip=seaweedfs -ip.bind=0.0.0.0 -volume.max=0 -s3 -s3.port=9000 -s3.config=/tmp/s3.json
+      '
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-boxcerto}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-boxcerto123}
+    ports:
+      - '9000:9000' # API S3
+      - '9333:9333' # painel do master
+    volumes:
+      - seaweedfs-data:/data
+
+  # Cria o bucket na primeira subida e termina.
+  seaweedfs-init:
+    image: chrislusf/seaweedfs:latest
+    depends_on:
+      - seaweedfs
+    entrypoint: >
+      /bin/sh -c '
+      for i in $$(seq 1 30); do
+        echo "s3.bucket.list" | weed shell -master=seaweedfs:9333 >/dev/null 2>&1 && break; sleep 2;
+      done;
+      echo "s3.bucket.create -name $$S3_BUCKET" | weed shell -master=seaweedfs:9333;
+      echo "s3.bucket.list" | weed shell -master=seaweedfs:9333
+      '
+    environment:
+      S3_BUCKET: ${S3_BUCKET:-box-certo}
+    restart: 'no'
+
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - '1025:1025' # SMTP
+      - '8025:8025' # painel web
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+
+volumes:
+  postgres-data:
+  seaweedfs-data:
