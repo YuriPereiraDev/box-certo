@@ -764,3 +764,9 @@ Registradas aqui para valer nas próximas fases.
 | Tabela de preços | Todos os usuários da oficina consultam; MASTER ou GERENTE criam/editam/desativam. |
 | Convites | Qualquer usuário da oficina gera; desativa: MASTER, GERENTE ou quem criou. Individual = 1 uso e 7 dias por padrão. Código de 6 caracteres sem 0/O/1/I/L. |
 | Senhas | Mínimo 8 caracteres (dono da plataforma: 12). Senha inicial de usuário é definida pelo master; recuperação por e-mail fica para a fase 11. |
+| Agendamento — serviço | O cliente descreve o serviço em texto livre; todo agendamento do cliente usa a duração padrão da oficina (`duracaoPadraoAgendamentoMin`, 60 min). A oficina pode informar outra duração. |
+| Agendamento — grade | Horários oferecidos de `passoAgendaMin` em `passoAgendaMin` (30 min) a partir da abertura, sem cruzar o almoço nem o fechamento; o cliente agenda até `janelaAgendamentoDias` (60) à frente. A oficina pode marcar fora da grade, dentro do expediente. |
+| Agendamento — capacidade | Um atendimento por mecânico ativo (master + mecânicos). Sem mecânico definido, o horário vale se houver mais mecânicos livres do que agendamentos sem mecânico sobrepostos. Reserva em transação com trava por oficina; o banco também impede o mesmo mecânico em horários sobrepostos (constraint de exclusão). |
+| Agendamento — mecânico | O cliente não escolhe; a oficina atribui (MASTER/GERENTE qualquer um; mecânico comum só assume para si). Mecânico comum vê só a própria agenda. |
+| Agendamento — status | Criado pelo cliente: AGENDADO; pela oficina: CONFIRMADO. Cliente reagenda/cancela até `antecedenciaCancelamentoHoras` antes (422 `PRAZO_ENCERRADO`); reagendar volta para AGENDADO. |
+| Auditoria — nome da ação | `@Auditar({ acao, entidade })`: o nome vale só para a entidade principal; efeitos colaterais (ex.: vínculo do veículo) ficam com o nome padrão. |

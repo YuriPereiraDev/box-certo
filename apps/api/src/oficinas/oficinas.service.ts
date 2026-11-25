@@ -45,6 +45,9 @@ const SELECAO_OFICINA = {
   limiteDescontoPercentual: true,
   limiteDescontoCentavos: true,
   antecedenciaCancelamentoHoras: true,
+  duracaoPadraoAgendamentoMin: true,
+  passoAgendaMin: true,
+  janelaAgendamentoDias: true,
   createdAt: true,
   plano: { select: { id: true, nome: true, maxMecanicos: true } },
 } as const;
@@ -172,7 +175,7 @@ export class OficinasService {
   configurarAgendamento(oficinaId: string, dto: ConfigAgendamentoDto) {
     return this.banco.sistema.oficina.update({
       where: { id: oficinaId },
-      data: { antecedenciaCancelamentoHoras: dto.antecedenciaCancelamentoHoras },
+      data: dto,
       select: SELECAO_OFICINA,
     });
   }

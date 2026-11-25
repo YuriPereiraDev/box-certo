@@ -80,7 +80,7 @@ export class AuditoriaService {
   /** Grava uma linha de log por alteração capturada na requisição. */
   async gravarAlteracoes(
     contexto: ContextoRequisicao,
-    extra: { acao?: string; motivo?: string | null } = {},
+    extra: { acao?: string; entidade?: string; motivo?: string | null } = {},
   ): Promise<void> {
     const alteracoes = contexto.alteracoes.splice(0);
     for (const alteracao of alteracoes) {
@@ -91,13 +91,17 @@ export class AuditoriaService {
   entradaDeAlteracao(
     alteracao: AlteracaoAuditada,
     contexto: Partial<ContextoRequisicao>,
-    extra: { acao?: string; motivo?: string | null } = {},
+    extra: { acao?: string; entidade?: string; motivo?: string | null } = {},
   ): EntradaAuditoria {
     const ator = dadosDoAtor(contexto.ator);
     return {
       ...ator,
       oficinaId: alteracao.oficinaId ?? ator.oficinaId,
-      acao: extra.acao ?? acaoPadrao(alteracao.entidade, alteracao.operacao),
+      // O nome da ação vale para a entidade principal; efeitos colaterais usam o nome padrão.
+      acao:
+        extra.acao && (!extra.entidade || extra.entidade === alteracao.entidade)
+          ? extra.acao
+          : acaoPadrao(alteracao.entidade, alteracao.operacao),
       entidade: alteracao.entidade,
       entidadeId: alteracao.entidadeId,
       antes: alteracao.antes,

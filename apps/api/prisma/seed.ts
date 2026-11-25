@@ -12,6 +12,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import argon2 from 'argon2';
 import { PermissaoPlataforma, PrismaClient } from '../src/generated/prisma/client.js';
 import { gerarCpf } from '../src/common/utils/cpf.js';
+import { dataLocal, localParaUtc, somarDias } from '../src/common/utils/datas.js';
 
 config({ path: ['.env', '../../.env'], quiet: true });
 
@@ -238,6 +239,54 @@ async function seedOficinaExemplo(prisma: PrismaClient) {
     update: {},
     create: { veiculoId: veiculo.id, oficinaId: oficina.id },
   });
+
+  // Fase 3: agendamentos em vários status, relativos a hoje (só na primeira execução).
+  if ((await prisma.agendamento.count({ where: { oficinaId: oficina.id } })) === 0) {
+    const mecanico1 = await prisma.user.findFirstOrThrow({
+      where: { oficinaId: oficina.id, email: 'mecanico1@oficina-exemplo.local' },
+    });
+    const hoje = dataLocal(new Date());
+    const em = (dias: number, hora: number, duracaoMin = 60) => {
+      const inicio = localParaUtc(somarDias(hoje, dias), hora * 60);
+      return { inicio, fim: new Date(inicio.getTime() + duracaoMin * 60_000) };
+    };
+    const base = {
+      oficinaId: oficina.id,
+      clienteId: cliente.id,
+      veiculoId: veiculo.id,
+      criadoPorTipo: 'CLIENTE' as const,
+      criadoPorId: cliente.id,
+    };
+    await prisma.agendamento.createMany({
+      data: [
+        {
+          ...base,
+          ...em(-7, 9),
+          tipoServico: 'Troca de óleo',
+          status: 'CONCLUIDO',
+          mecanicoId: mecanico1.id,
+        },
+        { ...base, ...em(-2, 10), tipoServico: 'Barulho na suspensão', status: 'NAO_COMPARECEU' },
+        {
+          ...base,
+          ...em(1, 9),
+          tipoServico: 'Revisão dos freios',
+          status: 'CONFIRMADO',
+          mecanicoId: mecanico1.id,
+        },
+        { ...base, ...em(1, 14), tipoServico: 'Luz da injeção acesa', status: 'AGENDADO' },
+        {
+          ...base,
+          ...em(3, 10),
+          tipoServico: 'Alinhamento',
+          status: 'CANCELADO',
+          canceladoEm: new Date(),
+          canceladoPorTipo: 'CLIENTE',
+          motivoCancelamento: 'Viagem',
+        },
+      ],
+    });
+  }
 
   console.log(
     `Oficina de exemplo: ${oficina.nome} — ${usuarios.length} usuários (${usuarios

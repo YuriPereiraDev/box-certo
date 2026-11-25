@@ -43,7 +43,7 @@ export class VeiculosOficinaController {
   }
 
   @Post()
-  @Auditar({ acao: 'VEICULO_CADASTRADO_PELA_OFICINA' })
+  @Auditar({ acao: 'VEICULO_CADASTRADO_PELA_OFICINA', entidade: 'Veiculo' })
   @ApiOperation({
     summary: 'Cadastra o veículo de um cliente da oficina e vincula à oficina',
     description: 'Se o cliente já tem um veículo com a mesma placa, ele é reaproveitado.',

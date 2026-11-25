@@ -6,6 +6,7 @@ import {
   IsArray,
   IsBoolean,
   IsEmail,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -143,11 +144,44 @@ export class ConfigDescontosDto {
 }
 
 export class ConfigAgendamentoDto {
-  @ApiProperty({ description: 'Cliente pode reagendar/cancelar até X horas antes', default: 2 })
+  @ApiPropertyOptional({
+    description: 'Cliente pode reagendar/cancelar até X horas antes',
+    default: 2,
+  })
+  @IsOptional()
   @IsInt()
   @Min(0)
   @Max(168)
-  antecedenciaCancelamentoHoras: number;
+  antecedenciaCancelamentoHoras?: number;
+
+  @ApiPropertyOptional({
+    description: 'Duração de cada agendamento feito pelo cliente (min)',
+    default: 60,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(15)
+  @Max(480)
+  duracaoPadraoAgendamentoMin?: number;
+
+  @ApiPropertyOptional({
+    description: 'Intervalo entre horários oferecidos (min)',
+    default: 30,
+    enum: [10, 15, 20, 30, 60],
+  })
+  @IsOptional()
+  @IsIn([10, 15, 20, 30, 60], { message: 'Use 10, 15, 20, 30 ou 60 minutos' })
+  passoAgendaMin?: number;
+
+  @ApiPropertyOptional({
+    description: 'Até quantos dias à frente o cliente pode agendar',
+    default: 60,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  janelaAgendamentoDias?: number;
 }
 
 export class HorarioDiaDto {

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { AgendamentosModule } from './agendamentos/agendamentos.module.js';
 import { AuditoriaInterceptor } from './auditoria/auditoria.interceptor.js';
 import { AuditoriaModule } from './auditoria/auditoria.module.js';
 import { AuthModule } from './auth/auth.module.js';
@@ -45,6 +46,7 @@ import { VeiculosModule } from './veiculos/veiculos.module.js';
     TabelaPrecosModule,
     ConvitesModule,
     VeiculosModule,
+    AgendamentosModule,
   ],
   providers: [
     // A ordem importa: rate limit → autenticação → autorização.

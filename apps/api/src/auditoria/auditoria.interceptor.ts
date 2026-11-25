@@ -45,7 +45,11 @@ export class AuditoriaInterceptor implements NestInterceptor {
       const motivo = typeof body?.motivo === 'string' ? body.motivo : null;
       const houveAlteracao = contexto.alteracoes.length > 0;
 
-      await this.auditoria.gravarAlteracoes(contexto, { acao: opcoes?.acao, motivo });
+      await this.auditoria.gravarAlteracoes(contexto, {
+        acao: opcoes?.acao,
+        entidade: opcoes?.entidade,
+        motivo,
+      });
 
       if (
         !houveAlteracao &&

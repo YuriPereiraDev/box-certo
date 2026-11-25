@@ -6,7 +6,10 @@ export const CHAVE_SEM_AUDITORIA_REQUISICAO = 'auditoria:sem-requisicao';
 export interface OpcoesAuditar {
   /** Nome da ação no log, ex.: USUARIO_DADOS_ATUALIZADOS. */
   acao: string;
-  /** Entidade usada quando a ação não altera nenhum registro. */
+  /**
+   * Entidade principal. Se informada, o nome da ação só é aplicado às alterações dessa
+   * entidade (as demais recebem o nome padrão); também é usada quando nada é alterado.
+   */
   entidade?: string;
 }
 

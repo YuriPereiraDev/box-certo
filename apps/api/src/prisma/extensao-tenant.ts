@@ -13,6 +13,7 @@ export const MODELOS_TENANT = new Set<string>([
   'Convite',
   'ItemTabelaPreco',
   'VeiculoOficina',
+  'Agendamento',
 ]);
 
 const OPERACOES_COM_WHERE = new Set([

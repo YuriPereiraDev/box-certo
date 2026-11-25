@@ -2,6 +2,7 @@
 // A URL de conexão fica em prisma.config.ts; o cliente usa o driver adapter do PostgreSQL.
 // Fase 1: oficina, usuários, clientes, refresh tokens e auditoria.
 // Fase 2: horários, convites, tabela de preços e veículos.
+// Fase 3: agendamentos.
 // Os demais modelos entram nas fases seguintes.
 
 generator client {
@@ -49,6 +50,15 @@ enum TipoItem {
   MAO_DE_OBRA
 }
 
+enum StatusAgendamento {
+  AGENDADO
+  CONFIRMADO
+  EM_ATENDIMENTO
+  CONCLUIDO
+  CANCELADO
+  NAO_COMPARECEU
+}
+
 enum TipoAtor {
   PLATAFORMA
   USUARIO
@@ -92,6 +102,9 @@ model Oficina {
   limiteDescontoCentavos        Int?
   // agendamento: cliente pode reagendar/cancelar até X horas antes
   antecedenciaCancelamentoHoras Int                    @default(2)
+  duracaoPadraoAgendamentoMin   Int                    @default(60) // duração de cada agendamento do cliente
+  passoAgendaMin                Int                    @default(30) // de quanto em quanto tempo há horário livre
+  janelaAgendamentoDias         Int                    @default(60) // até quantos dias à frente o cliente agenda
   termosAceitosEm               DateTime?
   createdAt                     DateTime               @default(now())
   updatedAt                     DateTime               @updatedAt
@@ -102,6 +115,7 @@ model Oficina {
   convites                      Convite[]
   itensTabelaPreco              ItemTabelaPreco[]
   veiculos                      VeiculoOficina[]
+  agendamentos                  Agendamento[]
 
   @@index([status])
 }
@@ -134,6 +148,8 @@ model User {
   createdAt  DateTime           @default(now())
   updatedAt  DateTime           @updatedAt
 
+  agendamentos Agendamento[]
+
   @@unique([oficinaId, email])
   @@index([email])
 }
@@ -160,6 +176,7 @@ model Cliente {
   updatedAt           DateTime         @updatedAt
   oficinas            ClienteOficina[]
   veiculos            Veiculo[]
+  agendamentos        Agendamento[]
 }
 
 // Vínculo criado pelo convite.
@@ -232,21 +249,22 @@ model ItemTabelaPreco {
 
 // Veículo é do cliente (conta global). A oficina só vê os vinculados a ela (VeiculoOficina).
 model Veiculo {
-  id          String           @id @default(uuid())
-  clienteId   String
-  cliente     Cliente          @relation(fields: [clienteId], references: [id])
-  placa       String // maiúsculas, sem hífen
-  marca       String?
-  modelo      String?
-  ano         Int?
-  motor       String?
-  cor         String?
-  combustivel String?
-  chassi      String?
-  ativo       Boolean          @default(true)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  oficinas    VeiculoOficina[]
+  id           String           @id @default(uuid())
+  clienteId    String
+  cliente      Cliente          @relation(fields: [clienteId], references: [id])
+  placa        String // maiúsculas, sem hífen
+  marca        String?
+  modelo       String?
+  ano          Int?
+  motor        String?
+  cor          String?
+  combustivel  String?
+  chassi       String?
+  ativo        Boolean          @default(true)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  oficinas     VeiculoOficina[]
+  agendamentos Agendamento[]
 
   @@unique([clienteId, placa])
   @@index([placa])
@@ -262,6 +280,35 @@ model VeiculoOficina {
 
   @@id([veiculoId, oficinaId])
   @@index([oficinaId])
+}
+
+model Agendamento {
+  id                 String            @id @default(uuid())
+  oficinaId          String
+  oficina            Oficina           @relation(fields: [oficinaId], references: [id])
+  clienteId          String
+  cliente            Cliente           @relation(fields: [clienteId], references: [id])
+  veiculoId          String
+  veiculo            Veiculo           @relation(fields: [veiculoId], references: [id])
+  mecanicoId         String?
+  mecanico           User?             @relation(fields: [mecanicoId], references: [id])
+  tipoServico        String
+  inicio             DateTime
+  fim                DateTime
+  status             StatusAgendamento @default(AGENDADO)
+  observacaoCliente  String?
+  observacaoOficina  String?
+  criadoPorTipo      TipoAtor
+  criadoPorId        String
+  canceladoEm        DateTime?
+  canceladoPorTipo   TipoAtor?
+  motivoCancelamento String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([oficinaId, inicio])
+  @@index([mecanicoId, inicio])
+  @@index([clienteId, inicio])
 }
 
 // Somente INSERT: um trigger no banco bloqueia UPDATE, DELETE e TRUNCATE.
