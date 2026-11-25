@@ -6,6 +6,10 @@ const base = () => ({
   JWT_ACCESS_SECRET: 'a'.repeat(32),
   JWT_REFRESH_SECRET: 'b'.repeat(32),
   ENCRYPTION_KEY: randomBytes(32).toString('base64'),
+  S3_ENDPOINT: 'http://localhost:9000',
+  S3_BUCKET: 'b',
+  S3_ACCESS_KEY: 'k',
+  S3_SECRET_KEY: 's',
 });
 
 describe('validarEnv', () => {

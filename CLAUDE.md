@@ -770,3 +770,11 @@ Registradas aqui para valer nas próximas fases.
 | Agendamento — mecânico | O cliente não escolhe; a oficina atribui (MASTER/GERENTE qualquer um; mecânico comum só assume para si). Mecânico comum vê só a própria agenda. |
 | Agendamento — status | Criado pelo cliente: AGENDADO; pela oficina: CONFIRMADO. Cliente reagenda/cancela até `antecedenciaCancelamentoHoras` antes (422 `PRAZO_ENCERRADO`); reagendar volta para AGENDADO. |
 | Auditoria — nome da ação | `@Auditar({ acao, entidade })`: o nome vale só para a entidade principal; efeitos colaterais (ex.: vínculo do veículo) ficam com o nome padrão. |
+| OS — recusa total | Se o cliente recusa todos os itens, a OS volta para EM_DIAGNOSTICO. Ao recusar uma peça, o cliente pode marcar "vou trazer a peça": entra um item "Peça trazida pelo cliente" (CLIENTE_COMPRA, não cobrado) no lugar. A oficina também pode fazer essa troca. |
+| OS — alteração após envio | Qualquer alteração em itens depois do envio zera as respostas do cliente e a OS volta para EM_DIAGNOSTICO até ser reenviada. Cada envio pede a aprovação de todos os itens. Descontos não zeram as respostas (só reduzem o valor). Itens não mudam em EM_EXECUCAO. |
+| OS — cancelamento | Cliente cancela até APROVADA (antes da execução). Oficina (mecânico da OS, gerente ou master) cancela em qualquer etapa não encerrada, com motivo obrigatório. O agendamento ligado é cancelado junto. |
+| OS — visibilidade e edição | Mecânico sem GERENTE vê só as próprias OS (lista e detalhe), mas o histórico do veículo mostra todas as OS e agendamentos dele na oficina, de qualquer mecânico (sem custo). Alteram a OS: o mecânico dela, GERENTE ou MASTER. Pagamento na oficina: também FINANCEIRO. |
+| OS — peças | Origem ESTOQUE só a partir da fase 5. CLIENTE_COMPRA não é cobrada (preço 0) e mostra o botão "Comprar peça" se houver link. Custo só é informado/visto por MASTER ou permissão FINANCEIRO. |
+| OS — descontos | Mecânico sem permissão da oficina ou acima do limite: PENDENTE_APROVACAO (não reduz o total até MASTER/GERENTE aprovar). Limite em % é relativo à base do desconto (item ou subtotal). |
+| OS — numeração | `Oficina.proximoNumeroOS` incrementado de forma atômica na abertura. |
+| Arquivos | Imagens JPG/PNG/WEBP/HEIC até 10 MB, validadas pelos bytes. Bucket privado; leitura por URL assinada de 15 min. Até 30 fotos por OS. Exclusão lógica. |

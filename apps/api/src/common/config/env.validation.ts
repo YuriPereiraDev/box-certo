@@ -52,6 +52,26 @@ export class EnvVars {
   @IsOptional()
   APP_URL?: string;
 
+  @IsString()
+  @IsNotEmpty()
+  S3_ENDPOINT: string;
+
+  @IsString()
+  @IsNotEmpty()
+  S3_BUCKET: string;
+
+  @IsString()
+  @IsNotEmpty()
+  S3_ACCESS_KEY: string;
+
+  @IsString()
+  @IsNotEmpty()
+  S3_SECRET_KEY: string;
+
+  @IsString()
+  @IsOptional()
+  S3_REGION?: string;
+
   /** Tentativas de login por IP por minuto. */
   @Type(() => Number)
   @IsInt()

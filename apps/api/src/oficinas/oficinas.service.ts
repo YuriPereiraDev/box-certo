@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ArquivosService } from '../arquivos/arquivos.service.js';
+import { StorageService } from '../arquivos/storage.service.js';
 import { AuthService, type RespostaLogin } from '../auth/auth.service.js';
 import { SenhaService } from '../auth/senha.service.js';
-import { contextoAtual, exigirOficinaId } from '../common/contexto/contexto.js';
+import { contextoAtual, exigirOficinaId, type AtorUsuario } from '../common/contexto/contexto.js';
 import { horaParaMinutos } from '../common/utils/documentos.js';
 import { BancoService } from '../prisma/banco.service.js';
 import type {
@@ -79,6 +81,8 @@ export class OficinasService {
     private readonly banco: BancoService,
     private readonly senhas: SenhaService,
     private readonly auth: AuthService,
+    private readonly arquivos: ArquivosService,
+    private readonly storage: StorageService,
   ) {}
 
   listarPlanos() {
@@ -145,10 +149,29 @@ export class OficinasService {
   async dados(oficinaId: string) {
     const oficina = await this.banco.sistema.oficina.findUnique({
       where: { id: oficinaId },
-      select: SELECAO_OFICINA,
+      select: { ...SELECAO_OFICINA, logoArquivoId: true },
     });
     if (!oficina) throw new NotFoundException('Oficina não encontrada');
-    return oficina;
+    const { logoArquivoId, ...resto } = oficina;
+    const logo = logoArquivoId
+      ? await this.banco.sistema.arquivo.findUnique({ where: { id: logoArquivoId } })
+      : null;
+    return { ...resto, logoUrl: logo ? await this.storage.urlDeLeitura(logo.chave) : null };
+  }
+
+  /** Logo usado no PDF do orçamento (PNG ou JPG ficam no PDF; outros formatos só no app). */
+  async definirLogo(ator: AtorUsuario, arquivo: Express.Multer.File | undefined) {
+    const salvo = await this.arquivos.salvarImagem(arquivo, {
+      oficinaId: ator.oficinaId,
+      entidade: 'OFICINA_LOGO',
+      entidadeId: ator.oficinaId,
+      ator,
+    });
+    await this.banco.sistema.oficina.update({
+      where: { id: ator.oficinaId },
+      data: { logoArquivoId: salvo.id },
+    });
+    return this.dados(ator.oficinaId);
   }
 
   atualizar(oficinaId: string, dto: AtualizarOficinaDto) {

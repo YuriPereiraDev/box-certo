@@ -288,6 +288,99 @@ async function seedOficinaExemplo(prisma: PrismaClient) {
     });
   }
 
+  // Fase 4: ordens de serviço em vários status (só na primeira execução).
+  if ((await prisma.ordemServico.count({ where: { oficinaId: oficina.id } })) === 0) {
+    const mecanico1 = await prisma.user.findFirstOrThrow({
+      where: { oficinaId: oficina.id, email: 'mecanico1@oficina-exemplo.local' },
+    });
+    const concluido = await prisma.agendamento.findFirst({
+      where: { oficinaId: oficina.id, status: 'CONCLUIDO' },
+    });
+    let numero = (await prisma.oficina.findUniqueOrThrow({ where: { id: oficina.id } }))
+      .proximoNumeroOS;
+    const base = {
+      oficinaId: oficina.id,
+      clienteId: cliente.id,
+      veiculoId: veiculo.id,
+      mecanicoId: mecanico1.id,
+    };
+    const item = (
+      descricao: string,
+      tipo: 'PECA' | 'MAO_DE_OBRA',
+      precoUnitarioCentavos: number,
+      statusCliente: 'PENDENTE' | 'APROVADO' | 'RECUSADO',
+      extra: Record<string, unknown> = {},
+    ) => ({
+      oficinaId: oficina.id,
+      descricao,
+      tipo,
+      precoUnitarioCentavos,
+      statusCliente,
+      origemPeca: tipo === 'PECA' ? ('COMPRADA_SEPARADO' as const) : null,
+      respondidoEm: statusCliente === 'PENDENTE' ? null : new Date(),
+      ...extra,
+    });
+
+    await prisma.ordemServico.create({
+      data: {
+        ...base,
+        numero: numero++,
+        agendamentoId: concluido?.id,
+        status: 'CONCLUIDA',
+        kmEntrada: 42_300,
+        diagnostico: 'Troca de óleo e filtro no prazo.',
+        enviadoEm: new Date(),
+        aprovadoEm: new Date(),
+        concluidoEm: new Date(),
+        statusPagamento: 'PAGO_NA_OFICINA',
+        formaPagamento: 'PIX',
+        pagoEm: new Date(),
+        itens: {
+          create: [
+            item('Troca de óleo e filtro', 'MAO_DE_OBRA', 8000, 'APROVADO'),
+            item('Óleo 5W30 sintético (1 L)', 'PECA', 4990, 'APROVADO', {
+              quantidade: 4,
+              custoUnitarioCentavos: 3200,
+            }),
+            item('Filtro de óleo', 'PECA', 3500, 'APROVADO', { custoUnitarioCentavos: 1900 }),
+          ],
+        },
+      },
+    });
+    await prisma.ordemServico.create({
+      data: {
+        ...base,
+        numero: numero++,
+        status: 'ORCAMENTO_ENVIADO',
+        kmEntrada: 45_210,
+        diagnostico: 'Pastilhas dianteiras no limite e fluido de freio vencido.',
+        enviadoEm: new Date(),
+        descontoTipo: 'PERCENTUAL',
+        descontoValor: 15,
+        descontoStatus: 'PENDENTE_APROVACAO',
+        descontoPorId: mecanico1.id,
+        descontoMotivo: 'Cliente pediu desconto',
+        descontoEm: new Date(),
+        itens: {
+          create: [
+            item('Revisão de freios', 'MAO_DE_OBRA', 15000, 'PENDENTE'),
+            item('Pastilha de freio dianteira (jogo)', 'PECA', 18990, 'PENDENTE', {
+              linkAfiliado: 'https://loja.exemplo/pastilha',
+            }),
+            item('Fluido de freio DOT4 500 ml', 'PECA', 0, 'PENDENTE', {
+              origemPeca: 'CLIENTE_COMPRA',
+              linkAfiliado: 'https://loja.exemplo/fluido',
+            }),
+          ],
+        },
+      },
+    });
+    await prisma.ordemServico.create({
+      data: { ...base, numero: numero++, status: 'ABERTA', kmEntrada: 45_400, combustivel: '1/4' },
+    });
+    await prisma.oficina.update({ where: { id: oficina.id }, data: { proximoNumeroOS: numero } });
+  }
+
   console.log(
     `Oficina de exemplo: ${oficina.nome} — ${usuarios.length} usuários (${usuarios
       .map((u) => u.email)

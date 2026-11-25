@@ -3,6 +3,7 @@
 // Fase 1: oficina, usuários, clientes, refresh tokens e auditoria.
 // Fase 2: horários, convites, tabela de preços e veículos.
 // Fase 3: agendamentos.
+// Fase 4: ordens de serviço, orçamento, descontos e arquivos.
 // Os demais modelos entram nas fases seguintes.
 
 generator client {
@@ -59,6 +60,45 @@ enum StatusAgendamento {
   NAO_COMPARECEU
 }
 
+enum OrigemPeca {
+  ESTOQUE
+  COMPRADA_SEPARADO
+  CLIENTE_COMPRA
+}
+
+enum StatusItemCliente {
+  PENDENTE
+  APROVADO
+  RECUSADO
+}
+
+enum StatusOS {
+  ABERTA
+  EM_DIAGNOSTICO
+  ORCAMENTO_ENVIADO
+  APROVADA
+  EM_EXECUCAO
+  CONCLUIDA
+  CANCELADA
+}
+
+enum TipoDesconto {
+  PERCENTUAL
+  VALOR
+}
+
+enum StatusDesconto {
+  APLICADO
+  PENDENTE_APROVACAO
+  RECUSADO
+}
+
+// Pagamento online: em breve.
+enum StatusPagamento {
+  PENDENTE
+  PAGO_NA_OFICINA
+}
+
 enum TipoAtor {
   PLATAFORMA
   USUARIO
@@ -105,6 +145,8 @@ model Oficina {
   duracaoPadraoAgendamentoMin   Int                    @default(60) // duração de cada agendamento do cliente
   passoAgendaMin                Int                    @default(30) // de quanto em quanto tempo há horário livre
   janelaAgendamentoDias         Int                    @default(60) // até quantos dias à frente o cliente agenda
+  proximoNumeroOS               Int                    @default(1) // sequencial da OS por oficina
+  logoArquivoId                 String? // logo usado no PDF do orçamento
   termosAceitosEm               DateTime?
   createdAt                     DateTime               @default(now())
   updatedAt                     DateTime               @updatedAt
@@ -116,6 +158,7 @@ model Oficina {
   itensTabelaPreco              ItemTabelaPreco[]
   veiculos                      VeiculoOficina[]
   agendamentos                  Agendamento[]
+  ordemServicos                 OrdemServico[]
 
   @@index([status])
 }
@@ -148,7 +191,8 @@ model User {
   createdAt  DateTime           @default(now())
   updatedAt  DateTime           @updatedAt
 
-  agendamentos Agendamento[]
+  agendamentos  Agendamento[]
+  ordensServico OrdemServico[]
 
   @@unique([oficinaId, email])
   @@index([email])
@@ -177,6 +221,7 @@ model Cliente {
   oficinas            ClienteOficina[]
   veiculos            Veiculo[]
   agendamentos        Agendamento[]
+  ordensServico       OrdemServico[]
 }
 
 // Vínculo criado pelo convite.
@@ -249,22 +294,23 @@ model ItemTabelaPreco {
 
 // Veículo é do cliente (conta global). A oficina só vê os vinculados a ela (VeiculoOficina).
 model Veiculo {
-  id           String           @id @default(uuid())
-  clienteId    String
-  cliente      Cliente          @relation(fields: [clienteId], references: [id])
-  placa        String // maiúsculas, sem hífen
-  marca        String?
-  modelo       String?
-  ano          Int?
-  motor        String?
-  cor          String?
-  combustivel  String?
-  chassi       String?
-  ativo        Boolean          @default(true)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  oficinas     VeiculoOficina[]
-  agendamentos Agendamento[]
+  id            String           @id @default(uuid())
+  clienteId     String
+  cliente       Cliente          @relation(fields: [clienteId], references: [id])
+  placa         String // maiúsculas, sem hífen
+  marca         String?
+  modelo        String?
+  ano           Int?
+  motor         String?
+  cor           String?
+  combustivel   String?
+  chassi        String?
+  ativo         Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  oficinas      VeiculoOficina[]
+  agendamentos  Agendamento[]
+  ordensServico OrdemServico[]
 
   @@unique([clienteId, placa])
   @@index([placa])
@@ -305,10 +351,112 @@ model Agendamento {
   motivoCancelamento String?
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
+  ordemServico       OrdemServico?
 
   @@index([oficinaId, inicio])
   @@index([mecanicoId, inicio])
   @@index([clienteId, inicio])
+}
+
+model OrdemServico {
+  id                    String          @id @default(uuid())
+  oficinaId             String
+  oficina               Oficina         @relation(fields: [oficinaId], references: [id])
+  numero                Int // sequencial por oficina
+  agendamentoId         String?         @unique
+  agendamento           Agendamento?    @relation(fields: [agendamentoId], references: [id])
+  clienteId             String
+  cliente               Cliente         @relation(fields: [clienteId], references: [id])
+  veiculoId             String
+  veiculo               Veiculo         @relation(fields: [veiculoId], references: [id])
+  mecanicoId            String
+  mecanico              User            @relation(fields: [mecanicoId], references: [id])
+  status                StatusOS        @default(ABERTA)
+  // verificação de entrada — todos opcionais
+  kmEntrada             Int?
+  combustivel           String?
+  estadoVeiculo         String?
+  diagnostico           String?
+  observacoes           String?
+  // desconto no total
+  descontoTipo          TipoDesconto?
+  descontoValor         Int? // % inteiro ou centavos
+  descontoStatus        StatusDesconto?
+  descontoPorId         String?
+  descontoMotivo        String?
+  descontoEm            DateTime?
+  descontoDecididoPorId String?
+  statusPagamento       StatusPagamento @default(PENDENTE)
+  formaPagamento        String?
+  pagoEm                DateTime?
+  enviadoEm             DateTime?
+  aprovadoEm            DateTime?
+  iniciadoEm            DateTime?
+  concluidoEm           DateTime?
+  canceladoEm           DateTime?
+  canceladoPorTipo      TipoAtor?
+  canceladoPorId        String?
+  motivoCancelamento    String?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  itens                 ItemOrcamento[]
+
+  @@unique([oficinaId, numero])
+  @@index([oficinaId, status])
+  @@index([veiculoId, createdAt])
+  @@index([mecanicoId, status])
+}
+
+model ItemOrcamento {
+  id                    String            @id @default(uuid())
+  oficinaId             String
+  ordemServicoId        String
+  ordemServico          OrdemServico      @relation(fields: [ordemServicoId], references: [id])
+  tabelaPrecoId         String?
+  descricao             String
+  tipo                  TipoItem
+  origemPeca            OrigemPeca? // só para PECA
+  estoqueItemId         String? // quando origem = ESTOQUE (fase 5)
+  quantidade            Int               @default(1)
+  precoUnitarioCentavos Int
+  custoUnitarioCentavos Int? // sensível: só MASTER/FINANCEIRO
+  linkAfiliado          String?
+  descontoTipo          TipoDesconto?
+  descontoValor         Int?
+  descontoStatus        StatusDesconto?
+  descontoPorId         String?
+  descontoMotivo        String?
+  descontoEm            DateTime?
+  descontoDecididoPorId String?
+  statusCliente         StatusItemCliente @default(PENDENTE)
+  respondidoEm          DateTime?
+  // peça que o cliente vai trazer no lugar de um item recusado
+  substituiItemId       String?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  deletedAt             DateTime?
+
+  @@index([ordemServicoId])
+  @@index([oficinaId])
+}
+
+// Fotos de OS, anexos de ticket, comprovantes, logo.
+model Arquivo {
+  id             String    @id @default(uuid())
+  oficinaId      String?
+  chave          String    @unique // caminho no bucket
+  nomeOriginal   String?
+  mime           String
+  tamanhoBytes   Int
+  entidade       String // ORDEM_SERVICO, TICKET, DESPESA, ESTOQUE, OFICINA_LOGO
+  entidadeId     String
+  enviadoPorTipo TipoAtor
+  enviadoPorId   String
+  createdAt      DateTime  @default(now())
+  deletedAt      DateTime?
+
+  @@index([entidade, entidadeId])
+  @@index([oficinaId])
 }
 
 // Somente INSERT: um trigger no banco bloqueia UPDATE, DELETE e TRUNCATE.

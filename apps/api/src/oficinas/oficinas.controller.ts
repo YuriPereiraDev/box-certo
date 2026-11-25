@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, Put, UploadedFile } from '@nestjs/common';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Auditar } from '../auditoria/auditoria.decorators.js';
 import { AtorAtual, Atores, ExigeRole, Publico } from '../common/auth/decorators.js';
@@ -11,6 +11,7 @@ import {
   ConfigDescontosDto,
   HorariosDto,
 } from './oficinas.dto.js';
+import { DocUpload, uploadImagem } from '../arquivos/upload.decorators.js';
 import { OficinasService } from './oficinas.service.js';
 
 @ApiTags('Público')
@@ -58,6 +59,16 @@ export class OficinaController {
   @ApiOperation({ summary: 'Atualiza os dados cadastrais (só MASTER)' })
   atualizar(@AtorAtual() ator: AtorUsuario, @Body() dto: AtualizarOficinaDto) {
     return this.oficinas.atualizar(ator.oficinaId, dto);
+  }
+
+  @Put('logo')
+  @ExigeRole('MASTER')
+  @uploadImagem()
+  @DocUpload()
+  @Auditar({ acao: 'OFICINA_LOGO_ALTERADO', entidade: 'Oficina' })
+  @ApiOperation({ summary: 'Envia o logo da oficina (usado no PDF; só MASTER)' })
+  logo(@AtorAtual() ator: AtorUsuario, @UploadedFile() arquivo: Express.Multer.File | undefined) {
+    return this.oficinas.definirLogo(ator, arquivo);
   }
 
   @Put('configuracoes/descontos')
