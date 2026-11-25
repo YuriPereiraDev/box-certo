@@ -1,6 +1,7 @@
 // Box Certo — schema do banco (Prisma 7).
 // A URL de conexão fica em prisma.config.ts; o cliente usa o driver adapter do PostgreSQL.
-// Fase 0: apenas admin da plataforma e planos. Os demais modelos entram nas fases seguintes.
+// Fase 1: oficina, usuários, clientes, refresh tokens e auditoria.
+// Os demais modelos entram nas fases seguintes.
 
 generator client {
   provider            = "prisma-client"
@@ -13,6 +14,27 @@ datasource db {
   provider = "postgresql"
 }
 
+enum OficinaStatus {
+  TESTE
+  ATIVA
+  SUSPENSA
+  CANCELADA
+}
+
+enum UserRole {
+  MASTER
+  MECANICO
+  FINANCEIRO
+}
+
+enum PermissaoOficina {
+  GERENTE
+  FINANCEIRO
+  VER_SALARIOS
+  GERIR_ESTOQUE
+  VER_LOGS
+}
+
 enum PermissaoPlataforma {
   FINANCEIRO
   GESTAO_OFICINAS
@@ -21,25 +43,161 @@ enum PermissaoPlataforma {
   GESTAO_ADMINS
 }
 
+enum TipoAtor {
+  PLATAFORMA
+  USUARIO
+  CLIENTE
+  SISTEMA
+  SUPORTE
+}
+
 model Plano {
-  id            String   @id @default(uuid())
-  nome          String   @unique // Autônomo, Oficina, Rede
+  id            String    @id @default(uuid())
+  nome          String    @unique // Autônomo, Oficina, Rede
   precoCentavos Int
   maxMecanicos  Int? // null = ilimitado
-  ativo         Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  ativo         Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  oficinas      Oficina[]
+}
+
+model Oficina {
+  id                       String           @id @default(uuid())
+  nome                     String
+  documento                String? // CPF ou CNPJ
+  telefone                 String?
+  email                    String?
+  cep                      String?
+  rua                      String?
+  numero                   String?
+  complemento              String?
+  bairro                   String?
+  cidade                   String?
+  uf                       String?
+  status                   OficinaStatus    @default(TESTE)
+  planoId                  String
+  plano                    Plano            @relation(fields: [planoId], references: [id])
+  testeAte                 DateTime?
+  precoFundadorCentavos    Int? // preço travado para primeiras oficinas
+  // parâmetros de desconto
+  mecanicoPodeDarDesconto  Boolean          @default(false)
+  limiteDescontoPercentual Int? // ex.: 10 = 10%
+  limiteDescontoCentavos   Int?
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+  deletedAt                DateTime?
+  usuarios                 User[]
+  clientes                 ClienteOficina[]
+
+  @@index([status])
 }
 
 model PlatformAdmin {
-  id         String                @id @default(uuid())
+  id            String                @id @default(uuid())
+  nome          String
+  email         String                @unique
+  senhaHash     String
+  isOwner       Boolean               @default(false)
+  permissoes    PermissaoPlataforma[]
+  totpSecret    String? // criptografado com AES-256-GCM
+  totpAtivadoEm DateTime? // 2FA só vale depois de confirmado com um código
+  ativo         Boolean               @default(true)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+}
+
+model User {
+  id         String             @id @default(uuid())
+  oficinaId  String
+  oficina    Oficina            @relation(fields: [oficinaId], references: [id])
   nome       String
-  email      String                @unique
+  email      String
+  telefone   String?
   senhaHash  String
-  isOwner    Boolean               @default(false)
-  permissoes PermissaoPlataforma[]
-  totpSecret String?
-  ativo      Boolean               @default(true)
-  createdAt  DateTime              @default(now())
-  updatedAt  DateTime              @updatedAt
+  role       UserRole
+  permissoes PermissaoOficina[]
+  ativo      Boolean            @default(true)
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  @@unique([oficinaId, email])
+  @@index([email])
+}
+
+model Cliente {
+  id                  String           @id @default(uuid())
+  nome                String
+  cpf                 String           @unique // só dígitos
+  dataNascimento      DateTime?
+  rg                  String?
+  email               String           @unique
+  telefone            String?
+  cep                 String?
+  rua                 String?
+  numero              String?
+  complemento         String?
+  bairro              String?
+  cidade              String?
+  uf                  String?
+  senhaHash           String
+  consentimentoLgpdEm DateTime
+  ativo               Boolean          @default(true)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  oficinas            ClienteOficina[]
+}
+
+// Vínculo criado pelo convite.
+model ClienteOficina {
+  clienteId           String
+  cliente             Cliente  @relation(fields: [clienteId], references: [id])
+  oficinaId           String
+  oficina             Oficina  @relation(fields: [oficinaId], references: [id])
+  conviteId           String?
+  observacoesInternas String? // visível só para a oficina
+  createdAt           DateTime @default(now())
+
+  @@id([clienteId, oficinaId])
+  @@index([oficinaId])
+}
+
+// Somente INSERT: um trigger no banco bloqueia UPDATE, DELETE e TRUNCATE.
+model AuditLog {
+  id         String   @id @default(uuid())
+  oficinaId  String?
+  atorTipo   TipoAtor
+  atorId     String?
+  atorNome   String?
+  acao       String // ex.: ORCAMENTO_DESCONTO_APLICADO
+  entidade   String
+  entidadeId String?
+  antes      Json?
+  depois     Json?
+  motivo     String?
+  ip         String?
+  userAgent  String?
+  origem     String? // APP_ANDROID, APP_IOS, DESKTOP, WEB
+  createdAt  DateTime @default(now())
+
+  @@index([oficinaId, createdAt])
+  @@index([entidade, entidadeId])
+  @@index([atorTipo, atorId, createdAt])
+  @@index([acao, createdAt])
+}
+
+// Refresh token opaco; só o HMAC fica salvo. Rotativo: cada uso gera um novo.
+model RefreshToken {
+  id             String    @id @default(uuid())
+  atorTipo       TipoAtor
+  atorId         String
+  hash           String    @unique
+  expiraEm       DateTime
+  revogadoEm     DateTime?
+  substituidoPor String?
+  ip             String?
+  userAgent      String?
+  createdAt      DateTime  @default(now())
+
+  @@index([atorTipo, atorId])
 }

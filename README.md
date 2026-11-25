@@ -31,6 +31,19 @@ npm run start:dev
 | Painel SeaweedFS | http://localhost:9333 |
 | Mailpit (e-mails de dev) | http://localhost:8025 |
 
+### Dados do seed (dev)
+
+- Super admin dono: `OWNER_EMAIL` / `OWNER_PASSWORD`. No primeiro login a API pede para configurar o 2FA
+  (`/auth/plataforma/2fa/configurar` → QR code no app autenticador → `/auth/plataforma/2fa/ativar`).
+- Oficina de exemplo — senha `SEED_SENHA_USUARIOS` para todos:
+  `master@`, `mecanico1@` (GERENTE), `mecanico2@`, `financeiro@` — todos `@oficina-exemplo.local` —
+  e o cliente `cliente@exemplo.local`.
+
+### Testes e2e
+
+Rodam num banco separado (`<banco>_test`, ou `DATABASE_URL_TEST`), criado e migrado automaticamente.
+O `AuditLog` é somente inserção, então os testes criam dados novos a cada execução em vez de limpar.
+
 ## Scripts da API (`apps/api`)
 
 | Script | O que faz |

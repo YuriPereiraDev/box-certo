@@ -51,6 +51,18 @@ export class EnvVars {
   @IsString()
   @IsOptional()
   APP_URL?: string;
+
+  /** Tentativas de login por IP por minuto. */
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  RATE_LIMIT_LOGIN = 5;
+
+  /** Requisições por IP por minuto (geral). */
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  RATE_LIMIT_GERAL = 300;
 }
 
 export function validarEnv(config: Record<string, unknown>): EnvVars {
