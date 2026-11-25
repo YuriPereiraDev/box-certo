@@ -743,3 +743,24 @@ Cada fase termina com: testes passando, lint limpo, migração criada, Swagger a
 - Toda alteração de dado passa pelo service (para a auditoria registrar).
 - Commits pequenos e descritivos, em português.
 - Testes para toda regra de negócio da seção 7 e para permissões da seção 4.
+
+---
+
+## 14. Decisões tomadas durante o desenvolvimento
+
+Registradas aqui para valer nas próximas fases.
+
+| Tema | Decisão |
+| --- | --- |
+| Testes | Vitest + Supertest (NestJS 12 é só ESM). e2e rodam no banco `<banco>_test`. |
+| Storage local | SeaweedFS (S3) no lugar do MinIO, que não publica mais imagens Docker. |
+| AuditLog | Somente inserção garantida por trigger no banco (bloqueia UPDATE/DELETE/TRUNCATE). |
+| Isolamento | `BancoService.tenant` (filtro automático de `oficinaId`) para rotas da oficina; `BancoService.sistema` para plataforma/cliente/público. Modelo novo com `oficinaId` deve entrar em `MODELOS_TENANT`. |
+| Rotas | Toda rota não pública declara `@Atores(...)`; sem isso o acesso é negado. |
+| Nova oficina | Autocadastro público (`POST /publico/oficinas`): oficina em TESTE por 14 dias + usuário MASTER + horários padrão. Admin também poderá criar (fase 8). |
+| Limite do plano | Conta usuários ativos com perfil MASTER ou MECANICO (FINANCEIRO não conta). Excedeu → 422 `LIMITE_DO_PLANO`. |
+| MASTER | Só existe pelo cadastro da oficina; não pode ser criado, desativado nem ter o perfil trocado pela API da oficina. |
+| Veículos | O veículo é do cliente. A oficina só vê veículos vinculados a ela (`VeiculoOficina`), criado quando ela cadastra o veículo ou quando o cliente agenda/abre OS nela. |
+| Tabela de preços | Todos os usuários da oficina consultam; MASTER ou GERENTE criam/editam/desativam. |
+| Convites | Qualquer usuário da oficina gera; desativa: MASTER, GERENTE ou quem criou. Individual = 1 uso e 7 dias por padrão. Código de 6 caracteres sem 0/O/1/I/L. |
+| Senhas | Mínimo 8 caracteres (dono da plataforma: 12). Senha inicial de usuário é definida pelo master; recuperação por e-mail fica para a fase 11. |

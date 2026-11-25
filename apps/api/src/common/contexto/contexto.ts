@@ -65,3 +65,10 @@ export function oficinaIdAtual(): string | undefined {
   const ator = contextoAtual()?.ator;
   return ator?.tipo === 'USUARIO' ? ator.oficinaId : undefined;
 }
+
+/** oficinaId do token; lança se não houver (uso dentro de rotas da oficina). */
+export function exigirOficinaId(): string {
+  const oficinaId = oficinaIdAtual();
+  if (!oficinaId) throw new Error('Rota da oficina sem oficina no contexto');
+  return oficinaId;
+}

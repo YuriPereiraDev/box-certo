@@ -8,9 +8,9 @@ import {
   ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
 import { SemAuditoriaDeRequisicao } from '../auditoria/auditoria.decorators.js';
 import { AtorAtual, Atores, Publico } from '../common/auth/decorators.js';
+import { LimiteLogin } from '../common/auth/limites.js';
 import type { Ator } from '../common/contexto/contexto.js';
 import { AuthService } from './auth.service.js';
 import {
@@ -20,13 +20,8 @@ import {
   LoginOficinaDto,
   LoginPlataformaDto,
   RefreshDto,
+  TrocarSenhaDto,
 } from './dto.js';
-
-/** Limite de tentativas de login por IP por minuto (RATE_LIMIT_LOGIN, padrão 5). */
-const LimiteLogin = () =>
-  Throttle({
-    default: { limit: () => Number(process.env.RATE_LIMIT_LOGIN ?? 5), ttl: 60_000 },
-  });
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -104,6 +99,18 @@ export class AuthController {
   @ApiOperation({ summary: 'Revoga o refresh token' })
   async logout(@Body() dto: RefreshDto): Promise<void> {
     await this.auth.logout(dto.refreshToken);
+  }
+
+  @Post('senha')
+  @Atores('PLATAFORMA', 'USUARIO', 'CLIENTE')
+  @LimiteLogin()
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Troca a própria senha (encerra as outras sessões e devolve tokens novos)',
+  })
+  trocarSenha(@AtorAtual() ator: Ator, @Body() dto: TrocarSenhaDto) {
+    return this.auth.trocarSenha(ator, dto.senhaAtual, dto.novaSenha);
   }
 
   @Get('me')

@@ -5,7 +5,15 @@ import { Prisma } from '../generated/prisma/client.js';
  * recebe `oficinaId` do token automaticamente. Ao criar um modelo novo com `oficinaId`,
  * adicione-o aqui.
  */
-export const MODELOS_TENANT = new Set<string>(['User', 'ClienteOficina', 'AuditLog']);
+export const MODELOS_TENANT = new Set<string>([
+  'User',
+  'ClienteOficina',
+  'AuditLog',
+  'HorarioFuncionamento',
+  'Convite',
+  'ItemTabelaPreco',
+  'VeiculoOficina',
+]);
 
 const OPERACOES_COM_WHERE = new Set([
   'findUnique',

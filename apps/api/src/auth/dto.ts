@@ -83,3 +83,16 @@ export class RefreshDto {
   @MaxLength(200)
   refreshToken: string;
 }
+
+export class TrocarSenhaDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty({ message: 'Informe a senha atual' })
+  @MaxLength(200)
+  senhaAtual: string;
+
+  @ApiProperty({ minLength: 8 })
+  @IsString()
+  @Length(8, 128, { message: 'A nova senha precisa ter de 8 a 128 caracteres' })
+  novaSenha: string;
+}

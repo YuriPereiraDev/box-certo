@@ -76,6 +76,14 @@ export class TokensService {
     };
   }
 
+  /** Encerra todas as sessões (refresh tokens) de um ator. */
+  async revogarTodos(tipo: TipoAtorAutenticado, atorId: string): Promise<void> {
+    await this.prisma.refreshToken.updateMany({
+      where: { atorTipo: tipo, atorId, revogadoEm: null },
+      data: { revogadoEm: new Date() },
+    });
+  }
+
   async verificarAcesso(token: string): Promise<PayloadAcesso> {
     const payload = await this.verificar<PayloadAcesso | PayloadConfig2fa>(token);
     if (payload.typ !== 'acesso') throw new UnauthorizedException('Token inválido');

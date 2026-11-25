@@ -161,6 +161,84 @@ async function seedOficinaExemplo(prisma: PrismaClient) {
     create: { clienteId: cliente.id, oficinaId: oficina.id },
   });
 
+  // Fase 2: horários, tabela de preços, convite e veículo.
+  const horarios = [
+    ...[1, 2, 3, 4, 5].map((diaSemana) => ({
+      diaSemana,
+      abre: '08:00',
+      fecha: '18:00',
+      intervaloInicio: '12:00',
+      intervaloFim: '13:00',
+    })),
+    { diaSemana: 6, abre: '08:00', fecha: '12:00', intervaloInicio: null, intervaloFim: null },
+  ];
+  for (const h of horarios) {
+    await prisma.horarioFuncionamento.upsert({
+      where: { oficinaId_diaSemana: { oficinaId: oficina.id, diaSemana: h.diaSemana } },
+      update: {},
+      create: { ...h, oficinaId: oficina.id },
+    });
+  }
+
+  const tabela = [
+    {
+      nome: 'Troca de óleo e filtro',
+      tipo: 'MAO_DE_OBRA',
+      precoCentavos: 8000,
+      tempoEstimadoMin: 40,
+    },
+    {
+      nome: 'Alinhamento e balanceamento',
+      tipo: 'MAO_DE_OBRA',
+      precoCentavos: 12000,
+      tempoEstimadoMin: 60,
+    },
+    { nome: 'Revisão de freios', tipo: 'MAO_DE_OBRA', precoCentavos: 15000, tempoEstimadoMin: 90 },
+    {
+      nome: 'Diagnóstico com scanner',
+      tipo: 'MAO_DE_OBRA',
+      precoCentavos: 10000,
+      tempoEstimadoMin: 30,
+    },
+    { nome: 'Óleo 5W30 sintético (1 L)', tipo: 'PECA', precoCentavos: 4990 },
+    { nome: 'Filtro de óleo', tipo: 'PECA', precoCentavos: 3500 },
+    { nome: 'Pastilha de freio dianteira (jogo)', tipo: 'PECA', precoCentavos: 18990 },
+  ] as const;
+  for (const item of tabela) {
+    const existe = await prisma.itemTabelaPreco.findFirst({
+      where: { oficinaId: oficina.id, nome: item.nome },
+    });
+    if (!existe) await prisma.itemTabelaPreco.create({ data: { ...item, oficinaId: oficina.id } });
+  }
+
+  const master = await prisma.user.findFirstOrThrow({
+    where: { oficinaId: oficina.id, role: 'MASTER' },
+  });
+  await prisma.convite.upsert({
+    where: { codigo: 'BXCERT' },
+    update: {},
+    create: { oficinaId: oficina.id, codigo: 'BXCERT', criadoPorId: master.id },
+  });
+
+  const veiculo = await prisma.veiculo.upsert({
+    where: { clienteId_placa: { clienteId: cliente.id, placa: 'BRA2E19' } },
+    update: {},
+    create: {
+      clienteId: cliente.id,
+      placa: 'BRA2E19',
+      marca: 'Chevrolet',
+      modelo: 'Onix',
+      ano: 2021,
+      cor: 'Branco',
+      combustivel: 'Flex',
+    },
+  });
+  await prisma.veiculoOficina.upsert({
+    where: { veiculoId_oficinaId: { veiculoId: veiculo.id, oficinaId: oficina.id } },
+    update: {},
+    create: { veiculoId: veiculo.id, oficinaId: oficina.id },
+  });
+
   console.log(
     `Oficina de exemplo: ${oficina.nome} — ${usuarios.length} usuários (${usuarios
       .map((u) => u.email)

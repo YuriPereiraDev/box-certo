@@ -1,6 +1,7 @@
 // Box Certo — schema do banco (Prisma 7).
 // A URL de conexão fica em prisma.config.ts; o cliente usa o driver adapter do PostgreSQL.
 // Fase 1: oficina, usuários, clientes, refresh tokens e auditoria.
+// Fase 2: horários, convites, tabela de preços e veículos.
 // Os demais modelos entram nas fases seguintes.
 
 generator client {
@@ -43,6 +44,11 @@ enum PermissaoPlataforma {
   GESTAO_ADMINS
 }
 
+enum TipoItem {
+  PECA
+  MAO_DE_OBRA
+}
+
 enum TipoAtor {
   PLATAFORMA
   USUARIO
@@ -63,32 +69,39 @@ model Plano {
 }
 
 model Oficina {
-  id                       String           @id @default(uuid())
-  nome                     String
-  documento                String? // CPF ou CNPJ
-  telefone                 String?
-  email                    String?
-  cep                      String?
-  rua                      String?
-  numero                   String?
-  complemento              String?
-  bairro                   String?
-  cidade                   String?
-  uf                       String?
-  status                   OficinaStatus    @default(TESTE)
-  planoId                  String
-  plano                    Plano            @relation(fields: [planoId], references: [id])
-  testeAte                 DateTime?
-  precoFundadorCentavos    Int? // preço travado para primeiras oficinas
+  id                            String                 @id @default(uuid())
+  nome                          String
+  documento                     String? // CPF ou CNPJ
+  telefone                      String?
+  email                         String?
+  cep                           String?
+  rua                           String?
+  numero                        String?
+  complemento                   String?
+  bairro                        String?
+  cidade                        String?
+  uf                            String?
+  status                        OficinaStatus          @default(TESTE)
+  planoId                       String
+  plano                         Plano                  @relation(fields: [planoId], references: [id])
+  testeAte                      DateTime?
+  precoFundadorCentavos         Int? // preço travado para primeiras oficinas
   // parâmetros de desconto
-  mecanicoPodeDarDesconto  Boolean          @default(false)
-  limiteDescontoPercentual Int? // ex.: 10 = 10%
-  limiteDescontoCentavos   Int?
-  createdAt                DateTime         @default(now())
-  updatedAt                DateTime         @updatedAt
-  deletedAt                DateTime?
-  usuarios                 User[]
-  clientes                 ClienteOficina[]
+  mecanicoPodeDarDesconto       Boolean                @default(false)
+  limiteDescontoPercentual      Int? // ex.: 10 = 10%
+  limiteDescontoCentavos        Int?
+  // agendamento: cliente pode reagendar/cancelar até X horas antes
+  antecedenciaCancelamentoHoras Int                    @default(2)
+  termosAceitosEm               DateTime?
+  createdAt                     DateTime               @default(now())
+  updatedAt                     DateTime               @updatedAt
+  deletedAt                     DateTime?
+  usuarios                      User[]
+  clientes                      ClienteOficina[]
+  horarios                      HorarioFuncionamento[]
+  convites                      Convite[]
+  itensTabelaPreco              ItemTabelaPreco[]
+  veiculos                      VeiculoOficina[]
 
   @@index([status])
 }
@@ -146,6 +159,7 @@ model Cliente {
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
   oficinas            ClienteOficina[]
+  veiculos            Veiculo[]
 }
 
 // Vínculo criado pelo convite.
@@ -155,10 +169,98 @@ model ClienteOficina {
   oficinaId           String
   oficina             Oficina  @relation(fields: [oficinaId], references: [id])
   conviteId           String?
+  convite             Convite? @relation(fields: [conviteId], references: [id])
   observacoesInternas String? // visível só para a oficina
   createdAt           DateTime @default(now())
 
   @@id([clienteId, oficinaId])
+  @@index([oficinaId])
+}
+
+model HorarioFuncionamento {
+  id              String   @id @default(uuid())
+  oficinaId       String
+  oficina         Oficina  @relation(fields: [oficinaId], references: [id])
+  diaSemana       Int // 0 = domingo ... 6 = sábado
+  abre            String // "08:00"
+  fecha           String // "18:00"
+  intervaloInicio String?
+  intervaloFim    String?
+  ativo           Boolean  @default(true) // false = fechado neste dia
+  updatedAt       DateTime @updatedAt
+
+  @@unique([oficinaId, diaSemana])
+}
+
+model Convite {
+  id          String           @id @default(uuid())
+  oficinaId   String
+  oficina     Oficina          @relation(fields: [oficinaId], references: [id])
+  codigo      String           @unique // curto, ex.: ZE7K2P
+  individual  Boolean          @default(false)
+  nome        String?
+  telefone    String?
+  expiraEm    DateTime?
+  usos        Int              @default(0)
+  maxUsos     Int?
+  ativo       Boolean          @default(true)
+  criadoPorId String
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  vinculos    ClienteOficina[]
+
+  @@index([oficinaId, createdAt])
+}
+
+// Tabela interna de preços (o cliente nunca vê).
+model ItemTabelaPreco {
+  id                 String   @id @default(uuid())
+  oficinaId          String
+  oficina            Oficina  @relation(fields: [oficinaId], references: [id])
+  nome               String
+  tipo               TipoItem
+  precoCentavos      Int
+  tempoEstimadoMin   Int?
+  estoqueItemId      String? // peça ligada ao estoque (fase 5)
+  linkAfiliadoPadrao String?
+  ativo              Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([oficinaId, nome])
+}
+
+// Veículo é do cliente (conta global). A oficina só vê os vinculados a ela (VeiculoOficina).
+model Veiculo {
+  id          String           @id @default(uuid())
+  clienteId   String
+  cliente     Cliente          @relation(fields: [clienteId], references: [id])
+  placa       String // maiúsculas, sem hífen
+  marca       String?
+  modelo      String?
+  ano         Int?
+  motor       String?
+  cor         String?
+  combustivel String?
+  chassi      String?
+  ativo       Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  oficinas    VeiculoOficina[]
+
+  @@unique([clienteId, placa])
+  @@index([placa])
+}
+
+// Criado quando a oficina cadastra o veículo ou quando o cliente agenda/abre OS nela.
+model VeiculoOficina {
+  veiculoId String
+  veiculo   Veiculo  @relation(fields: [veiculoId], references: [id])
+  oficinaId String
+  oficina   Oficina  @relation(fields: [oficinaId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@id([veiculoId, oficinaId])
   @@index([oficinaId])
 }
 

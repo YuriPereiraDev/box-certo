@@ -271,9 +271,46 @@ export class AuthService {
     });
   }
 
+  /** Troca a própria senha; encerra as outras sessões e devolve um par novo. */
+  async trocarSenha(ator: Ator, senhaAtual: string, novaSenha: string): Promise<RespostaLogin> {
+    const conta =
+      ator.tipo === 'PLATAFORMA'
+        ? await this.prisma.platformAdmin.findUnique({ where: { id: ator.id } })
+        : ator.tipo === 'USUARIO'
+          ? await this.prisma.user.findUnique({ where: { id: ator.id } })
+          : await this.prisma.cliente.findUnique({ where: { id: ator.id } });
+    if (!conta || !(await this.senhas.verificar(conta.senhaHash, senhaAtual))) {
+      throw new UnauthorizedException('Senha atual incorreta');
+    }
+    const senhaHash = await this.senhas.gerarHash(novaSenha);
+    if (ator.tipo === 'PLATAFORMA') {
+      await this.prisma.platformAdmin.update({ where: { id: ator.id }, data: { senhaHash } });
+    } else if (ator.tipo === 'USUARIO') {
+      await this.prisma.user.update({ where: { id: ator.id }, data: { senhaHash } });
+    } else {
+      await this.prisma.cliente.update({ where: { id: ator.id }, data: { senhaHash } });
+    }
+    await this.tokens.revogarTodos(ator.tipo, ator.id);
+    await this.registrar({
+      acao: 'SENHA_ALTERADA',
+      entidade: { PLATAFORMA: 'PlatformAdmin', USUARIO: 'User', CLIENTE: 'Cliente' }[ator.tipo],
+      entidadeId: ator.id,
+      atorTipo: ator.tipo,
+      atorId: ator.id,
+      atorNome: ator.nome,
+      oficinaId: ator.tipo === 'USUARIO' ? ator.oficinaId : null,
+    });
+    return this.concluirLogin(
+      ator.tipo,
+      ator.id,
+      ator.tipo === 'USUARIO' ? ator.oficinaId : undefined,
+    );
+  }
+
   // --------------------------------------------------------------- interno
 
-  private async concluirLogin(
+  /** Abre a sessão (tokens + log de login). Usado também após cadastros públicos. */
+  async concluirLogin(
     tipo: TipoAtorAutenticado,
     id: string,
     oficinaId?: string,

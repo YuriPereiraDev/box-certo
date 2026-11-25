@@ -30,6 +30,6 @@ import { TotpService } from './totp.service.js';
     TotpService,
     CriptografiaService,
   ],
-  exports: [TokensService, AtoresService, SenhaService, CriptografiaService],
+  exports: [AuthService, TokensService, AtoresService, SenhaService, CriptografiaService],
 })
 export class AuthModule {}

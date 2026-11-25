@@ -44,7 +44,7 @@ function idDoRegistro(registro: Registro): string | null {
   if (!registro) return null;
   if (typeof registro.id === 'string') return registro.id;
   // Chaves compostas (ex.: ClienteOficina)
-  const partes = ['clienteId', 'oficinaId']
+  const partes = ['clienteId', 'veiculoId', 'oficinaId']
     .map((k) => registro[k])
     .filter((v) => typeof v === 'string');
   return partes.length ? partes.join(':') : null;

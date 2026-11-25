@@ -6,14 +6,18 @@ import { AuditoriaInterceptor } from './auditoria/auditoria.interceptor.js';
 import { AuditoriaModule } from './auditoria/auditoria.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { ClientesModule } from './clientes/clientes.module.js';
+import { ConvitesModule } from './convites/convites.module.js';
 import { AcessoGuard } from './common/auth/acesso.guard.js';
 import { AuthGuard } from './common/auth/auth.guard.js';
 import { validarEnv } from './common/config/env.validation.js';
 import { ErrosFilter } from './common/filtros/erros.filter.js';
 import { HealthModule } from './health/health.module.js';
+import { OficinasModule } from './oficinas/oficinas.module.js';
 import { PlatformModule } from './platform/platform.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { TabelaPrecosModule } from './tabela-precos/tabela-precos.module.js';
 import { UsuariosModule } from './usuarios/usuarios.module.js';
+import { VeiculosModule } from './veiculos/veiculos.module.js';
 
 @Module({
   imports: [
@@ -37,6 +41,10 @@ import { UsuariosModule } from './usuarios/usuarios.module.js';
     AuditoriaModule,
     PlatformModule,
     ClientesModule,
+    OficinasModule,
+    TabelaPrecosModule,
+    ConvitesModule,
+    VeiculosModule,
   ],
   providers: [
     // A ordem importa: rate limit → autenticação → autorização.
