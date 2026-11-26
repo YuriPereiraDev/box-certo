@@ -93,7 +93,8 @@ async function seedOficinaExemplo(prisma: PrismaClient) {
   const senhaHash = await argon2.hash(senha, { type: argon2.argon2id });
   const plano = await prisma.plano.findUniqueOrThrow({ where: { nome: 'Oficina' } });
 
-  const nomeOficina = 'Oficina Exemplo Box Certo';
+  // SEED_OFICINA_NOME permite criar outra oficina de exemplo (o teste do dashboard usa isso).
+  const nomeOficina = process.env.SEED_OFICINA_NOME?.trim() || 'Oficina Exemplo Box Certo';
   const oficina =
     (await prisma.oficina.findFirst({ where: { nome: nomeOficina } })) ??
     (await prisma.oficina.create({

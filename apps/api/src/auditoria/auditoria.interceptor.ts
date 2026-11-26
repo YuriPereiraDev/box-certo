@@ -15,7 +15,8 @@ const METODOS_DE_ESCRITA = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 /**
  * Interceptor global de auditoria. Ao fim de cada requisição grava:
  * - uma linha por alteração capturada pela extensão do Prisma (com antes/depois);
- * - se a requisição de escrita não alterou nada no banco, uma linha da própria ação.
+ * - se a requisição de escrita não alterou nada no banco, uma linha da própria ação
+ * (também em leituras marcadas com @Auditar, como exportações — seção 9).
  * As alterações são gravadas mesmo se o handler falhar depois de escrever no banco.
  */
 @Injectable()
@@ -55,7 +56,7 @@ export class AuditoriaInterceptor implements NestInterceptor {
         !houveAlteracao &&
         !semRequisicao &&
         resultado !== undefined &&
-        METODOS_DE_ESCRITA.has(req.method)
+        (METODOS_DE_ESCRITA.has(req.method) || opcoes !== undefined)
       ) {
         const params = req.params as Record<string, string | undefined>;
         const rota = (req.route as { path?: string } | undefined)?.path ?? req.path;

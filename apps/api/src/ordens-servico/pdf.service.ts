@@ -1,25 +1,14 @@
-import { dirname } from 'node:path';
-import { createRequire } from 'node:module';
 import { Injectable } from '@nestjs/common';
-import pdfmake from 'pdfmake';
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces.js';
 import { ArquivosService } from '../arquivos/arquivos.service.js';
+import { pdfmake, reais } from '../common/pdf/pdfmake.js';
 import { FUSO_PADRAO } from '../common/utils/datas.js';
 import { BancoService } from '../prisma/banco.service.js';
 import type { OsCompleta } from './apresentacao.js';
 import { calcularTotais, valoresDoItem } from './calculo.js';
 
-const require = createRequire(import.meta.url);
-const fontes = require('pdfmake/fonts/Roboto.js') as Record<string, Record<string, string>>;
-const pastaFontes = dirname(require.resolve('pdfmake/fonts/Roboto.js'));
+export { reais };
 
-pdfmake.setFonts(fontes);
-// O servidor só lê as fontes do próprio pdfmake e nunca baixa nada da internet.
-pdfmake.setUrlAccessPolicy(() => false);
-pdfmake.setLocalAccessPolicy((caminho: string) => caminho.startsWith(pastaFontes));
-
-const moeda = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
-export const reais = (centavos: number) => moeda.format(centavos / 100);
 const dataHora = new Intl.DateTimeFormat('pt-BR', {
   timeZone: FUSO_PADRAO,
   dateStyle: 'short',

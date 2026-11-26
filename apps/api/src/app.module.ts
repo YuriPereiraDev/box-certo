@@ -8,6 +8,7 @@ import { ArquivosModule } from './arquivos/arquivos.module.js';
 import { OrdensServicoModule } from './ordens-servico/ordens-servico.module.js';
 import { EstoqueModule } from './estoque/estoque.module.js';
 import { DespesasModule } from './despesas/despesas.module.js';
+import { DashboardsModule } from './dashboards/dashboards.module.js';
 import { AuditoriaInterceptor } from './auditoria/auditoria.interceptor.js';
 import { AuditoriaModule } from './auditoria/auditoria.module.js';
 import { AuthModule } from './auth/auth.module.js';
@@ -57,6 +58,7 @@ import { VeiculosModule } from './veiculos/veiculos.module.js';
     OrdensServicoModule,
     EstoqueModule,
     DespesasModule,
+    DashboardsModule,
   ],
   providers: [
     // A ordem importa: rate limit → autenticação → autorização.
