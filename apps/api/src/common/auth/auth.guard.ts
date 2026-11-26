@@ -32,8 +32,11 @@ export class AuthGuard implements CanActivate {
     }
 
     const payload = await this.tokens.verificarAcesso(token);
-    const ator = await this.atores.carregar(payload.tipo, payload.sub);
-    if (ator.tipo === 'USUARIO' && ator.oficinaId !== payload.oficinaId) {
+    const ator = await this.atores.carregar(payload.tipo, payload.sub, payload.sid);
+    if (
+      (ator.tipo === 'USUARIO' || ator.tipo === 'SUPORTE') &&
+      ator.oficinaId !== payload.oficinaId
+    ) {
       throw new UnauthorizedException('Token inválido');
     }
 

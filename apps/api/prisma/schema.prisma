@@ -6,6 +6,7 @@
 // Fase 4: ordens de serviço, orçamento, descontos e arquivos.
 // Fase 5: estoque (e o mínimo de despesas para a despesa automática da entrada).
 // Fase 6: despesas completas (recorrentes, salários, comprovantes).
+// Fase 8: plataforma (avisos, modo suporte, histórico de status da oficina).
 // Os demais modelos entram nas fases seguintes.
 
 generator client {
@@ -161,6 +162,9 @@ model Oficina {
   plano                         Plano                  @relation(fields: [planoId], references: [id])
   testeAte                      DateTime?
   precoFundadorCentavos         Int? // preço travado para primeiras oficinas
+  statusAlteradoEm              DateTime?
+  motivoStatus                  String?
+  canceladaEm                   DateTime?
   // parâmetros de desconto
   mecanicoPodeDarDesconto       Boolean                @default(false)
   limiteDescontoPercentual      Int? // ex.: 10 = 10%
@@ -607,6 +611,33 @@ model DespesaRecorrente {
   despesas       Despesa[]
 
   @@index([oficinaId, ativa])
+}
+
+model SessaoSuporte {
+  id          String    @id @default(uuid())
+  adminId     String
+  oficinaId   String
+  motivo      String
+  expiraEm    DateTime
+  encerradaEm DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([adminId, createdAt])
+  @@index([oficinaId, createdAt])
+}
+
+model AvisoGlobal {
+  id          String    @id @default(uuid())
+  titulo      String
+  mensagem    String
+  inicio      DateTime
+  fim         DateTime?
+  ativo       Boolean   @default(true)
+  criadoPorId String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([ativo, inicio])
 }
 
 // Somente INSERT: um trigger no banco bloqueia UPDATE, DELETE e TRUNCATE.

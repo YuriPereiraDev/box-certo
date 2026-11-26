@@ -497,7 +497,7 @@ export class AgendamentosService {
           inicio: dto.inicio,
           fim,
           status: 'CONFIRMADO',
-          criadoPorTipo: 'USUARIO',
+          criadoPorTipo: ator.tipo,
           criadoPorId: ator.id,
         },
         select: SELECAO_AGENDAMENTO,
@@ -592,7 +592,7 @@ export class AgendamentosService {
       data: {
         status: dto.status,
         ...(cancelando
-          ? { canceladoEm: new Date(), canceladoPorTipo: 'USUARIO', motivoCancelamento: dto.motivo }
+          ? { canceladoEm: new Date(), canceladoPorTipo: ator.tipo, motivoCancelamento: dto.motivo }
           : {}),
       },
       select: SELECAO_AGENDAMENTO,

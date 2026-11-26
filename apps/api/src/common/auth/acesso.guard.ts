@@ -27,11 +27,14 @@ const SEM_PERMISSAO = 'Você não tem permissão para acessar este recurso';
 /** Regra de acesso pura (testável sem Nest). Lança 403 quando o ator não pode passar. */
 export function verificarAcesso(ator: Ator, regras: RegrasAcesso): void {
   // Fail closed: rota autenticada sem @Atores não libera ninguém.
-  if (!regras.atores?.length || !regras.atores.includes(ator.tipo)) {
-    throw new ForbiddenException(SEM_PERMISSAO);
-  }
+  // Modo suporte: vale como usuário da oficina (perfil MASTER) nas rotas da oficina.
+  const permitido =
+    !!regras.atores?.length &&
+    (regras.atores.includes(ator.tipo) ||
+      (ator.tipo === 'SUPORTE' && regras.atores.includes('USUARIO')));
+  if (!permitido) throw new ForbiddenException(SEM_PERMISSAO);
 
-  if (ator.tipo === 'USUARIO' && ator.role !== 'MASTER') {
+  if ((ator.tipo === 'USUARIO' || ator.tipo === 'SUPORTE') && ator.role !== 'MASTER') {
     if (regras.roles?.length && !regras.roles.includes(ator.role)) {
       throw new ForbiddenException(SEM_PERMISSAO);
     }

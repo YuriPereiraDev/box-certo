@@ -45,7 +45,7 @@ export function dadosDoAtor(
     atorTipo: ator.tipo,
     atorId: ator.id,
     atorNome: ator.nome,
-    oficinaId: ator.tipo === 'USUARIO' ? ator.oficinaId : null,
+    oficinaId: ator.tipo === 'USUARIO' || ator.tipo === 'SUPORTE' ? ator.oficinaId : null,
   };
 }
 

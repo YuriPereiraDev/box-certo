@@ -172,6 +172,8 @@ export class OrdensServicoService {
     if (!mecanicoId) {
       if (ator.role === 'FINANCEIRO')
         throw new BadRequestException('Informe o mecânico responsável');
+      // No modo suporte o ator é um admin (não é mecânico): o mecânico precisa ser informado.
+      if (ator.tipo === 'SUPORTE') throw new BadRequestException('Informe o mecânico responsável');
       mecanicoId = ator.id;
     }
     await this.exigirMecanico(mecanicoId);
@@ -536,13 +538,13 @@ export class OrdensServicoService {
         data: {
           status: 'CANCELADA',
           canceladoEm: new Date(),
-          canceladoPorTipo: 'USUARIO',
+          canceladoPorTipo: ator.tipo,
           canceladoPorId: ator.id,
           motivoCancelamento: motivo,
         },
       });
       await this.reservas.liberarDaOs(tx, id, ator, 'OS cancelada');
-      await cancelarAgendamentoDaOs(tx, os.agendamentoId, 'USUARIO', motivo);
+      await cancelarAgendamentoDaOs(tx, os.agendamentoId, ator.tipo, motivo);
     });
     return this.detalhar(ator, id);
   }
@@ -769,7 +771,7 @@ export function itemPecaDoCliente(
 export async function cancelarAgendamentoDaOs(
   tx: Tx,
   agendamentoId: string | null,
-  porTipo: 'USUARIO' | 'CLIENTE',
+  porTipo: 'USUARIO' | 'SUPORTE' | 'CLIENTE',
   motivo?: string,
 ) {
   if (!agendamentoId) return;

@@ -14,14 +14,20 @@ export interface AtorPlataforma {
   permissoes: PermissaoPlataforma[];
 }
 
+/**
+ * Usuário da oficina. No modo suporte (`tipo: 'SUPORTE'`) é um admin da plataforma agindo
+ * na oficina como MASTER por tempo limitado: `id` é o do admin (não é um User) e tudo fica
+ * auditado como SUPORTE ("Suporte Box Certo" nos logs da oficina).
+ */
 export interface AtorUsuario {
-  tipo: 'USUARIO';
+  tipo: 'USUARIO' | 'SUPORTE';
   id: string;
   nome: string;
   email: string;
   oficinaId: string;
   role: UserRole;
   permissoes: PermissaoOficina[];
+  suporte?: { adminId: string; sessaoId: string; expiraEm: Date };
 }
 
 export interface AtorCliente {
@@ -31,7 +37,7 @@ export interface AtorCliente {
   email: string;
 }
 
-/** Quem está fazendo a requisição. (Modo suporte — `SUPORTE` — entra na fase 8.) */
+/** Quem está fazendo a requisição. */
 export type Ator = AtorPlataforma | AtorUsuario | AtorCliente;
 export type TipoAtorAutenticado = Ator['tipo'];
 
@@ -63,10 +69,15 @@ export function contextoAtual(): ContextoRequisicao | undefined {
 /** oficinaId do usuário autenticado — sempre do token, nunca do corpo da requisição. */
 export function oficinaIdAtual(): string | undefined {
   const ator = contextoAtual()?.ator;
-  return ator?.tipo === 'USUARIO' ? ator.oficinaId : undefined;
+  return ator?.tipo === 'USUARIO' || ator?.tipo === 'SUPORTE' ? ator.oficinaId : undefined;
 }
 
 /** oficinaId do token; lança se não houver (uso dentro de rotas da oficina). */
+/** Ator da oficina (usuário ou suporte), ou undefined. */
+export function ehAtorDaOficina(ator: Ator | undefined): ator is AtorUsuario {
+  return ator?.tipo === 'USUARIO' || ator?.tipo === 'SUPORTE';
+}
+
 export function exigirOficinaId(): string {
   const oficinaId = oficinaIdAtual();
   if (!oficinaId) throw new Error('Rota da oficina sem oficina no contexto');

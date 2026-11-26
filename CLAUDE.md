@@ -757,7 +757,7 @@ Registradas aqui para valer nas próximas fases.
 | AuditLog | Somente inserção garantida por trigger no banco (bloqueia UPDATE/DELETE/TRUNCATE). |
 | Isolamento | `BancoService.tenant` (filtro automático de `oficinaId`) para rotas da oficina; `BancoService.sistema` para plataforma/cliente/público. Modelo novo com `oficinaId` deve entrar em `MODELOS_TENANT`. |
 | Rotas | Toda rota não pública declara `@Atores(...)`; sem isso o acesso é negado. |
-| Nova oficina | Autocadastro público (`POST /publico/oficinas`): oficina em TESTE por 14 dias + usuário MASTER + horários padrão. Admin também poderá criar (fase 8). |
+| Nova oficina | Autocadastro público (`POST /publico/oficinas`): oficina em TESTE por 14 dias + usuário MASTER + horários padrão. Admin com GESTAO_OFICINAS também cria (`POST /plataforma/oficinas`), com senha temporária para o master. |
 | Limite do plano | Conta usuários ativos com perfil MASTER ou MECANICO (FINANCEIRO não conta). Excedeu → 422 `LIMITE_DO_PLANO`. |
 | MASTER | Só existe pelo cadastro da oficina; não pode ser criado, desativado nem ter o perfil trocado pela API da oficina. |
 | Veículos | O veículo é do cliente. A oficina só vê veículos vinculados a ela (`VeiculoOficina`), criado quando ela cadastra o veículo ou quando o cliente agenda/abre OS nela. |
@@ -791,3 +791,9 @@ Registradas aqui para valer nas próximas fases.
 | Dashboard — lucro | Lucro = faturamento do período − despesas com data no período (pagas ou a pagar). Sem VER_SALARIOS as despesas saem sem salários (`incluiSalarios: false`). O bloco financeiro ignora o filtro de mecânico (é sempre da oficina). |
 | Dashboard — acesso | MASTER, GERENTE ou permissão FINANCEIRO; mecânico comum recebe 403. Bloco financeiro só MASTER ou FINANCEIRO (para os demais vem `null`). Exportação PDF/Excel com as mesmas regras e registrada na auditoria (`DASHBOARD_EXPORTADO`). |
 | Seed | `SEED_OFICINA_NOME` cria outra oficina de exemplo; o teste do dashboard roda o seed real e confere os números. |
+| Plataforma — valores | Faturamento do Box Certo (mensalidades das oficinas ATIVAS, preço fundador quando houver), preços de planos, preço fundador, mensalidade e faturamento de cada oficina e ranking: só o dono ou FINANCEIRO; para os demais esses campos não vêm (ou o bloco vem `null`). Alterar plano/preço fundador exige FINANCEIRO. |
+| Plataforma — permissões | Listar/detalhar oficinas, planos, dashboard, logs, alertas e saúde: qualquer admin. Alterar oficinas (status com motivo, plano, teste, criar, exportar LGPD): GESTAO_OFICINAS. Contas: GESTAO_USUARIOS. Admins: GESTAO_ADMINS, concedendo/retirando só permissões que a pessoa tem; o dono e a própria conta não são alterados pela API. Avisos e modo suporte: SUPORTE. |
+| Plataforma — senhas | Admin novo e resets (admin, usuário, cliente) usam senha temporária gerada, mostrada uma única vez; reset encerra as sessões; reset de admin zera o 2FA. |
+| Modo suporte | Admin com SUPORTE abre sessão com motivo (15–120 min, padrão 60) e recebe um token sem refresh para `/oficina/*`: age como MASTER (leitura e escrita), funciona com a oficina suspensa, não troca senha e não acessa `/plataforma/*`. Tudo é auditado com `atorTipo = SUPORTE` ("Suporte Box Certo" nos logs da oficina). Ao abrir OS precisa informar o mecânico (o admin não é mecânico). Encerrar ou expirar a sessão derruba o token. |
+| Alertas de logs | Calculados sob demanda: ≥5 falhas de login por IP na janela; ≥10 exclusões/desativações do mesmo ator em 10 min; atividade de usuários de oficina entre 00h e 05h. Notificação ao time fica para a fase 11. Tickets no dashboard da plataforma: fase 9. |
+| Churn | Canceladas no mês ÷ (ativas agora + canceladas no mês). `Oficina.canceladaEm` é limpo ao reativar. |

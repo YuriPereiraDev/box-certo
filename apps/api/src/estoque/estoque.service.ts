@@ -147,7 +147,7 @@ export class EstoqueService {
           custoUnitarioCentavos: dto.custoUnitarioCentavos,
           fornecedor: dto.fornecedor,
           notaFiscal: dto.notaFiscal,
-          atorTipo: 'USUARIO',
+          atorTipo: ator.tipo,
           usuarioId: ator.id,
         },
       });
@@ -215,7 +215,7 @@ export class EstoqueService {
           saldoQuantidade: atualizada.quantidade,
           saldoReservada: atualizada.quantidadeReservada,
           motivo: dto.motivo,
-          atorTipo: 'USUARIO',
+          atorTipo: ator.tipo,
           usuarioId: ator.id,
         },
       });

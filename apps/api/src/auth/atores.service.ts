@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
-import type { Ator, TipoAtorAutenticado } from '../common/contexto/contexto.js';
+import type { Ator, AtorUsuario, TipoAtorAutenticado } from '../common/contexto/contexto.js';
+import { PermissaoOficina } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 export const MENSAGEM_OFICINA_BLOQUEADA = {
@@ -14,8 +15,10 @@ export const MENSAGEM_OFICINA_BLOQUEADA = {
 export class AtoresService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async carregar(tipo: TipoAtorAutenticado, id: string): Promise<Ator> {
+  async carregar(tipo: TipoAtorAutenticado, id: string, sessaoId?: string): Promise<Ator> {
     switch (tipo) {
+      case 'SUPORTE':
+        return this.carregarSuporte(id, sessaoId);
       case 'PLATAFORMA': {
         const admin = await this.prisma.platformAdmin.findUnique({ where: { id } });
         if (!admin?.ativo) throw new UnauthorizedException('Conta inativa ou inexistente');
@@ -53,6 +56,43 @@ export class AtoresService {
         return { tipo, id: cliente.id, nome: cliente.nome, email: cliente.email };
       }
     }
+  }
+
+  /**
+   * Modo suporte: a sessão precisa estar aberta e no prazo, e o admin ativo com SUPORTE
+   * (ou dono). Vale mesmo com a oficina suspensa — o suporte precisa entrar para ajudar.
+   */
+  private async carregarSuporte(adminId: string, sessaoId?: string): Promise<AtorUsuario> {
+    const sessao = sessaoId
+      ? await this.prisma.sessaoSuporte.findUnique({ where: { id: sessaoId } })
+      : null;
+    if (
+      !sessao ||
+      sessao.adminId !== adminId ||
+      sessao.encerradaEm ||
+      sessao.expiraEm <= new Date()
+    ) {
+      throw new UnauthorizedException('Sessão de suporte encerrada ou expirada');
+    }
+    const admin = await this.prisma.platformAdmin.findUnique({ where: { id: adminId } });
+    if (!admin?.ativo || !(admin.isOwner || admin.permissoes.includes('SUPORTE'))) {
+      throw new UnauthorizedException('Sessão de suporte inválida');
+    }
+    const oficina = await this.prisma.oficina.findUnique({
+      where: { id: sessao.oficinaId },
+      select: { deletedAt: true },
+    });
+    if (!oficina || oficina.deletedAt) throw new UnauthorizedException('Oficina inexistente');
+    return {
+      tipo: 'SUPORTE',
+      id: admin.id,
+      nome: `Suporte Box Certo (${admin.nome})`,
+      email: admin.email,
+      oficinaId: sessao.oficinaId,
+      role: 'MASTER',
+      permissoes: Object.values(PermissaoOficina),
+      suporte: { adminId: admin.id, sessaoId: sessao.id, expiraEm: sessao.expiraEm },
+    };
   }
 
   /** Oficina suspensa ou cancelada: 403 com mensagem clara (os dados são mantidos). */

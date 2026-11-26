@@ -14,6 +14,8 @@ export interface PayloadAcesso {
   sub: string;
   tipo: TipoAtorAutenticado;
   oficinaId?: string;
+  /** Modo suporte: id da SessaoSuporte. */
+  sid?: string;
   typ: 'acesso';
 }
 
@@ -74,6 +76,19 @@ export class TokensService {
       par: { accessToken, refreshToken, expiraEmSegundos: DURACAO_ACESSO_SEGUNDOS },
       refreshId: registro.id,
     };
+  }
+
+  /** Token do modo suporte: sem refresh, vale até o fim da sessão de suporte. */
+  async emitirSuporte(adminId: string, oficinaId: string, sessaoId: string, expiraEm: Date) {
+    const payload: PayloadAcesso = {
+      sub: adminId,
+      tipo: 'SUPORTE',
+      oficinaId,
+      sid: sessaoId,
+      typ: 'acesso',
+    };
+    const segundos = Math.max(1, Math.floor((expiraEm.getTime() - Date.now()) / 1000));
+    return this.jwt.signAsync(payload, { expiresIn: segundos });
   }
 
   /** Encerra todas as sessões (refresh tokens) de um ator. */

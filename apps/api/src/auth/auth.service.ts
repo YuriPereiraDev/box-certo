@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { AuditoriaService, type EntradaAuditoria } from '../auditoria/auditoria.service.js';
 import { CriptografiaService } from '../common/cripto/criptografia.service.js';
 import { contextoAtual, type Ator, type TipoAtorAutenticado } from '../common/contexto/contexto.js';
@@ -18,6 +23,13 @@ export interface RespostaConfig2faPendente {
   requerConfiguracao2fa: true;
   tokenConfiguracao: string;
 }
+
+const ENTIDADE_DO_ATOR: Record<TipoAtorAutenticado, string> = {
+  PLATAFORMA: 'PlatformAdmin',
+  USUARIO: 'User',
+  CLIENTE: 'Cliente',
+  SUPORTE: 'SessaoSuporte',
+};
 
 const CREDENCIAIS_INVALIDAS = 'E-mail ou senha inválidos';
 
@@ -273,6 +285,9 @@ export class AuthService {
 
   /** Troca a própria senha; encerra as outras sessões e devolve um par novo. */
   async trocarSenha(ator: Ator, senhaAtual: string, novaSenha: string): Promise<RespostaLogin> {
+    if (ator.tipo === 'SUPORTE') {
+      throw new ForbiddenException('No modo suporte não é possível trocar senha');
+    }
     const conta =
       ator.tipo === 'PLATAFORMA'
         ? await this.prisma.platformAdmin.findUnique({ where: { id: ator.id } })
@@ -293,7 +308,7 @@ export class AuthService {
     await this.tokens.revogarTodos(ator.tipo, ator.id);
     await this.registrar({
       acao: 'SENHA_ALTERADA',
-      entidade: { PLATAFORMA: 'PlatformAdmin', USUARIO: 'User', CLIENTE: 'Cliente' }[ator.tipo],
+      entidade: ENTIDADE_DO_ATOR[ator.tipo],
       entidadeId: ator.id,
       atorTipo: ator.tipo,
       atorId: ator.id,
@@ -319,7 +334,7 @@ export class AuthService {
     const { par } = await this.tokens.emitirPar({ tipo, id, oficinaId }, this.infoCliente());
     await this.registrar({
       acao: 'LOGIN_SUCESSO',
-      entidade: { PLATAFORMA: 'PlatformAdmin', USUARIO: 'User', CLIENTE: 'Cliente' }[tipo],
+      entidade: ENTIDADE_DO_ATOR[tipo],
       entidadeId: id,
       atorTipo: tipo,
       atorId: id,
