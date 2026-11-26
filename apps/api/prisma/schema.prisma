@@ -5,6 +5,7 @@
 // Fase 3: agendamentos.
 // Fase 4: ordens de serviço, orçamento, descontos e arquivos.
 // Fase 5: estoque (e o mínimo de despesas para a despesa automática da entrada).
+// Fase 6: despesas completas (recorrentes, salários, comprovantes).
 // Os demais modelos entram nas fases seguintes.
 
 generator client {
@@ -113,6 +114,16 @@ enum StatusDespesa {
   PAGO
 }
 
+enum SubtipoSalario {
+  SALARIO
+  VALE
+  COMISSAO
+  DECIMO_TERCEIRO
+  FERIAS
+  HORA_EXTRA
+  BENEFICIO
+}
+
 enum TipoAtor {
   PLATAFORMA
   USUARIO
@@ -175,6 +186,7 @@ model Oficina {
   ordemServicos                 OrdemServico[]
   estoqueItens                  EstoqueItem[]
   categoriasDespesa             CategoriaDespesa[]
+  despesasRecorrentes           DespesaRecorrente[]
 
   @@index([status])
 }
@@ -209,6 +221,8 @@ model User {
 
   agendamentos  Agendamento[]
   ordensServico OrdemServico[]
+  despesas      Despesa[]
+  recorrentes   DespesaRecorrente[]
 
   @@unique([oficinaId, email])
   @@index([email])
@@ -527,43 +541,72 @@ model MovimentoEstoque {
 }
 
 model CategoriaDespesa {
-  id        String    @id @default(uuid())
-  oficinaId String
-  oficina   Oficina   @relation(fields: [oficinaId], references: [id])
-  nome      String
-  ehSalario Boolean   @default(false) // protegida por VER_SALARIOS
-  padrao    Boolean   @default(false)
-  ativo     Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  despesas  Despesa[]
+  id          String              @id @default(uuid())
+  oficinaId   String
+  oficina     Oficina             @relation(fields: [oficinaId], references: [id])
+  nome        String
+  ehSalario   Boolean             @default(false) // protegida por VER_SALARIOS
+  padrao      Boolean             @default(false)
+  ativo       Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+  despesas    Despesa[]
+  recorrentes DespesaRecorrente[]
 
   @@unique([oficinaId, nome])
 }
 
 // Fase 5 cria só o necessário para a despesa automática; o resto vem na fase 6.
 model Despesa {
-  id                 String           @id @default(uuid())
+  id                 String             @id @default(uuid())
   oficinaId          String
   data               DateTime
   descricao          String
   valorCentavos      Int
   categoriaId        String
-  categoria          CategoriaDespesa @relation(fields: [categoriaId], references: [id])
+  categoria          CategoriaDespesa   @relation(fields: [categoriaId], references: [id])
   formaPagamento     String?
   status             StatusDespesa
   vencimento         DateTime?
   pagoEm             DateTime?
   recorrenteId       String?
+  recorrente         DespesaRecorrente? @relation(fields: [recorrenteId], references: [id])
+  competencia        String? // "2026-12": mês gerado pela recorrente
   funcionarioId      String? // pagamento de funcionário
-  subtipoSalario     String? // SALARIO, VALE, COMISSAO, DECIMO_TERCEIRO, FERIAS, HORA_EXTRA, BENEFICIO
-  movimentoEstoqueId String?          @unique
+  funcionario        User?              @relation(fields: [funcionarioId], references: [id])
+  subtipoSalario     SubtipoSalario?
+  movimentoEstoqueId String?            @unique
   criadoPorId        String
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
   deletedAt          DateTime?
+  excluidoPorId      String?
+  motivoExclusao     String?
 
+  @@unique([recorrenteId, competencia])
   @@index([oficinaId, data])
   @@index([oficinaId, status, vencimento])
+}
+
+model DespesaRecorrente {
+  id             String           @id @default(uuid())
+  oficinaId      String
+  oficina        Oficina          @relation(fields: [oficinaId], references: [id])
+  descricao      String
+  valorCentavos  Int
+  categoriaId    String
+  categoria      CategoriaDespesa @relation(fields: [categoriaId], references: [id])
+  diaVencimento  Int // 1–31; meses curtos usam o último dia
+  funcionarioId  String?
+  funcionario    User?            @relation(fields: [funcionarioId], references: [id])
+  subtipoSalario SubtipoSalario?
+  formaPagamento String?
+  ativa          Boolean          @default(true)
+  criadoPorId    String
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  despesas       Despesa[]
+
+  @@index([oficinaId, ativa])
 }
 
 // Somente INSERT: um trigger no banco bloqueia UPDATE, DELETE e TRUNCATE.

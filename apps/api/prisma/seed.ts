@@ -391,6 +391,102 @@ async function seedOficinaExemplo(prisma: PrismaClient) {
     }
   }
 
+  // Fase 6: recorrentes, contas do mês e pagamentos de funcionários (só na primeira execução).
+  if ((await prisma.despesaRecorrente.count({ where: { oficinaId: oficina.id } })) === 0) {
+    const master = await prisma.user.findFirstOrThrow({
+      where: { oficinaId: oficina.id, role: 'MASTER' },
+    });
+    const mecanico2 = await prisma.user.findFirstOrThrow({
+      where: { oficinaId: oficina.id, email: 'mecanico2@oficina-exemplo.local' },
+    });
+    const cat = Object.fromEntries(
+      (await prisma.categoriaDespesa.findMany({ where: { oficinaId: oficina.id } })).map((c) => [
+        c.nome,
+        c.id,
+      ]),
+    );
+    const hoje = dataLocal(new Date());
+    const competencia = hoje.slice(0, 7);
+    const dia = (n: number) =>
+      localParaUtc(`${competencia}-${String(n).padStart(2, '0')}`, 12 * 60);
+    const recorrentes = [
+      { descricao: 'Aluguel do galpão', valorCentavos: 450_000, categoria: 'Aluguel', dia: 10 },
+      { descricao: 'Internet', valorCentavos: 14_990, categoria: 'Internet', dia: 15 },
+      { descricao: 'Energia elétrica', valorCentavos: 89_000, categoria: 'Energia', dia: 20 },
+      {
+        descricao: 'Salário — Lucas Mecânico',
+        valorCentavos: 280_000,
+        categoria: 'Salários e funcionários',
+        dia: 5,
+        funcionarioId: mecanico2.id,
+        subtipoSalario: 'SALARIO' as const,
+      },
+    ];
+    for (const r of recorrentes) {
+      const rec = await prisma.despesaRecorrente.create({
+        data: {
+          oficinaId: oficina.id,
+          descricao: r.descricao,
+          valorCentavos: r.valorCentavos,
+          categoriaId: cat[r.categoria],
+          diaVencimento: r.dia,
+          funcionarioId: r.funcionarioId,
+          subtipoSalario: r.subtipoSalario,
+          criadoPorId: master.id,
+          createdAt: localParaUtc(somarDias(hoje, -90), 12 * 60),
+        },
+      });
+      // Despesa deste mês: as que já venceram ficam pagas, as outras a pagar.
+      const vencimento = dia(r.dia);
+      const pago = vencimento < new Date();
+      await prisma.despesa.create({
+        data: {
+          oficinaId: oficina.id,
+          data: vencimento,
+          descricao: r.descricao,
+          valorCentavos: r.valorCentavos,
+          categoriaId: cat[r.categoria],
+          funcionarioId: r.funcionarioId,
+          subtipoSalario: r.subtipoSalario,
+          status: pago ? 'PAGO' : 'A_PAGAR',
+          vencimento,
+          pagoEm: pago ? vencimento : null,
+          formaPagamento: pago ? 'PIX' : null,
+          recorrenteId: rec.id,
+          competencia,
+          criadoPorId: master.id,
+        },
+      });
+    }
+    await prisma.despesa.create({
+      data: {
+        oficinaId: oficina.id,
+        data: new Date(),
+        descricao: 'Vale — Lucas Mecânico',
+        valorCentavos: 50_000,
+        categoriaId: cat['Salários e funcionários'],
+        funcionarioId: mecanico2.id,
+        subtipoSalario: 'VALE',
+        status: 'PAGO',
+        pagoEm: new Date(),
+        formaPagamento: 'Dinheiro',
+        criadoPorId: master.id,
+      },
+    });
+    await prisma.despesa.create({
+      data: {
+        oficinaId: oficina.id,
+        data: new Date(),
+        descricao: 'Jogo de chaves combinadas',
+        valorCentavos: 32_900,
+        categoriaId: cat['Ferramentas'],
+        status: 'A_PAGAR',
+        vencimento: localParaUtc(somarDias(hoje, 3), 12 * 60),
+        criadoPorId: master.id,
+      },
+    });
+  }
+
   // Fase 4: ordens de serviço em vários status (só na primeira execução).
   if ((await prisma.ordemServico.count({ where: { oficinaId: oficina.id } })) === 0) {
     const mecanico1 = await prisma.user.findFirstOrThrow({

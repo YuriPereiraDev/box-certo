@@ -3,7 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBody, ApiConsumes } from '@nestjs/swagger';
 import { TAMANHO_MAX_IMAGEM } from './arquivos.service.js';
 
-/** Recebe uma imagem no campo multipart "arquivo" (até 10 MB). */
+/** Recebe um arquivo no campo multipart "arquivo" (até 10 MB). */
 export const uploadImagem = () =>
   UseInterceptors(
     FileInterceptor('arquivo', { limits: { fileSize: TAMANHO_MAX_IMAGEM, files: 1 } }),

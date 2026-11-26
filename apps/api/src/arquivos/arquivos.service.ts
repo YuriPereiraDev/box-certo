@@ -7,6 +7,13 @@ import { StorageService } from './storage.service.js';
 export const TAMANHO_MAX_IMAGEM = 10 * 1024 * 1024;
 
 /** Tipos de imagem aceitos, reconhecidos pelos primeiros bytes (não pela extensão). */
+export function detectarPdf(buffer: Buffer): { mime: string; extensao: string } | null {
+  return buffer.subarray(0, 5).toString() === '%PDF-'
+    ? { mime: 'application/pdf', extensao: 'pdf' }
+    : null;
+}
+
+/** Tipos de imagem aceitos, reconhecidos pelos primeiros bytes. */
 export function detectarImagem(buffer: Buffer): { mime: string; extensao: string } | null {
   if (buffer.length < 12) return null;
   if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
@@ -46,17 +53,40 @@ export class ArquivosService {
   ) {}
 
   /** Valida e guarda uma imagem enviada por um usuário da oficina. */
-  async salvarImagem(
+  salvarImagem(
     arquivo: Express.Multer.File | undefined,
     dados: { oficinaId: string; entidade: string; entidadeId: string; ator: Ator },
+  ) {
+    return this.salvar(arquivo, dados, false);
+  }
+
+  /** Comprovantes: imagem ou PDF. */
+  salvarDocumento(
+    arquivo: Express.Multer.File | undefined,
+    dados: { oficinaId: string; entidade: string; entidadeId: string; ator: Ator },
+  ) {
+    return this.salvar(arquivo, dados, true);
+  }
+
+  private async salvar(
+    arquivo: Express.Multer.File | undefined,
+    dados: { oficinaId: string; entidade: string; entidadeId: string; ator: Ator },
+    aceitarPdf: boolean,
   ) {
     if (!arquivo?.buffer?.length)
       throw new BadRequestException('Envie o arquivo no campo "arquivo"');
     if (arquivo.size > TAMANHO_MAX_IMAGEM) {
-      throw new BadRequestException('A imagem pode ter no máximo 10 MB');
+      throw new BadRequestException('O arquivo pode ter no máximo 10 MB');
     }
-    const tipo = detectarImagem(arquivo.buffer);
-    if (!tipo) throw new BadRequestException('Formato não aceito. Envie JPG, PNG, WEBP ou HEIC.');
+    const tipo =
+      detectarImagem(arquivo.buffer) ?? (aceitarPdf ? detectarPdf(arquivo.buffer) : null);
+    if (!tipo) {
+      throw new BadRequestException(
+        aceitarPdf
+          ? 'Formato não aceito. Envie PDF, JPG, PNG, WEBP ou HEIC.'
+          : 'Formato não aceito. Envie JPG, PNG, WEBP ou HEIC.',
+      );
+    }
 
     const chave = `oficinas/${dados.oficinaId}/${dados.entidade.toLowerCase()}/${dados.entidadeId}/${randomUUID()}.${tipo.extensao}`;
     await this.storage.enviar(chave, arquivo.buffer, tipo.mime);

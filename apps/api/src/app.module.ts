@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AgendamentosModule } from './agendamentos/agendamentos.module.js';
 import { ArquivosModule } from './arquivos/arquivos.module.js';
 import { OrdensServicoModule } from './ordens-servico/ordens-servico.module.js';
 import { EstoqueModule } from './estoque/estoque.module.js';
+import { DespesasModule } from './despesas/despesas.module.js';
 import { AuditoriaInterceptor } from './auditoria/auditoria.interceptor.js';
 import { AuditoriaModule } from './auditoria/auditoria.module.js';
 import { AuthModule } from './auth/auth.module.js';
@@ -38,6 +40,7 @@ import { VeiculosModule } from './veiculos/veiculos.module.js';
         { name: 'default', ttl: 60_000, limit: () => Number(process.env.RATE_LIMIT_GERAL ?? 300) },
       ],
     }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     AuthModule,
     HealthModule,
@@ -53,6 +56,7 @@ import { VeiculosModule } from './veiculos/veiculos.module.js';
     ArquivosModule,
     OrdensServicoModule,
     EstoqueModule,
+    DespesasModule,
   ],
   providers: [
     // A ordem importa: rate limit → autenticação → autorização.
