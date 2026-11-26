@@ -20,6 +20,7 @@ import {
   cancelarAgendamentoDaOs,
   ENTIDADE_FOTO_OS,
   itemPecaDoCliente,
+  travarOs,
 } from './ordens-servico.service.js';
 
 /** O cliente pode cancelar enquanto o serviço não começou. */
@@ -85,7 +86,7 @@ export class OrdensServicoClienteService {
 
     const indisponiveis: { itemId: string; descricao: string }[] = [];
     await this.banco.sistema.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtext(${id}))) t`;
+      await travarOs(tx, id);
       const os = await tx.ordemServico.findFirst({
         where: { id, clienteId: cliente.id },
         include: INCLUDE_OS,
@@ -166,6 +167,18 @@ export class OrdensServicoClienteService {
       });
     }
     await this.banco.sistema.$transaction(async (tx) => {
+      // Mesma trava da oficina: não cancela no meio de uma alteração ou do início da execução.
+      await travarOs(tx, id);
+      const { status } = await tx.ordemServico.findUniqueOrThrow({
+        where: { id },
+        select: { status: true },
+      });
+      if (!STATUS_CANCELAVEIS_PELO_CLIENTE.includes(status)) {
+        throw new UnprocessableEntityException({
+          codigo: 'STATUS_NAO_PERMITE',
+          mensagem: 'O serviço já começou ou terminou. Fale com a oficina para cancelar.',
+        });
+      }
       await tx.ordemServico.update({
         where: { id },
         data: {

@@ -4,6 +4,7 @@ import { normalizarPlaca } from '../common/utils/documentos.js';
 import { BancoService } from '../prisma/banco.service.js';
 import type {
   AtualizarVeiculoDto,
+  AtualizarVeiculoOficinaDto,
   CriarVeiculoOficinaDto,
   FiltroVeiculosDto,
   VeiculoDto,
@@ -87,7 +88,7 @@ export class VeiculosService {
     return this.detalharDaOficina(veiculo.id);
   }
 
-  async atualizarNaOficina(veiculoId: string, dto: AtualizarVeiculoDto) {
+  async atualizarNaOficina(veiculoId: string, dto: AtualizarVeiculoOficinaDto) {
     await this.detalharDaOficina(veiculoId);
     await this.banco.sistema.veiculo.update({ where: { id: veiculoId }, data: dto });
     return this.detalharDaOficina(veiculoId);
@@ -148,9 +149,13 @@ export class VeiculosService {
       throw new ConflictException('Você já cadastrou um veículo com esta placa');
     }
     if (existente) {
+      // Pela oficina, um veículo já cadastrado não tem o chassi trocado (só preenchido se vazio).
+      const { placa: _p, chassi, ...resto } = dados;
       return this.banco.sistema.veiculo.update({
         where: { id: existente.id },
-        data: { ...dados, ativo: true },
+        data: opcoes.reaproveitarAtivo
+          ? { ...resto, chassi: existente.chassi ?? chassi, ativo: true }
+          : { ...dados, ativo: true },
         select: SELECAO_VEICULO,
       });
     }

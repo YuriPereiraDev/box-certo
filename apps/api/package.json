@@ -23,7 +23,8 @@
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "postinstall": "prisma generate",
-    "prebuild": "prisma generate"
+    "prebuild": "prisma generate",
+    "db:usuario-app": "tsx prisma/usuario-app.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1177.0",
@@ -44,6 +45,7 @@
     "dotenv": "^18.0.10",
     "exceljs": "^4.4.0",
     "helmet": "^8.3.0",
+    "multer": "^2.5.0",
     "otpauth": "^9.6.0",
     "pdfmake": "^0.3.15",
     "pg": "^8.23.1",

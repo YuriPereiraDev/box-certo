@@ -66,11 +66,23 @@ export class AdminsService {
     return admin;
   }
 
+  /**
+   * Só altera, bloqueia ou reseta quem não tem mais poder que você: o alvo não pode ter
+   * permissão que você não tem (senão bastaria resetar o acesso dele para herdar a permissão).
+   */
   private async alvoEditavel(ator: AtorPlataforma, id: string) {
     const alvo = await this.buscar(id);
     if (alvo.isOwner) throw new ForbiddenException('O dono não pode ser alterado por aqui');
     if (alvo.id === ator.id)
       throw new ForbiddenException('Você não pode alterar a própria conta por aqui');
+    if (!ator.isOwner) {
+      const aMais = alvo.permissoes.filter((p) => !ator.permissoes.includes(p));
+      if (aMais.length) {
+        throw new ForbiddenException(
+          `Este admin tem permissões que você não tem (${aMais.join(', ')}); só o dono pode alterá-lo`,
+        );
+      }
+    }
     return alvo;
   }
 

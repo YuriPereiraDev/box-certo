@@ -1,7 +1,7 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
-import { catchError, concatMap, from, Observable, throwError } from 'rxjs';
+import { concatMap, from, Observable } from 'rxjs';
 import { contextoAtual } from '../common/contexto/contexto.js';
 import {
   CHAVE_AUDITAR,
@@ -13,11 +13,11 @@ import { AuditoriaService, dadosDoAtor } from './auditoria.service.js';
 const METODOS_DE_ESCRITA = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 /**
- * Interceptor global de auditoria. Ao fim de cada requisição grava:
- * - uma linha por alteração capturada pela extensão do Prisma (com antes/depois);
- * - se a requisição de escrita não alterou nada no banco, uma linha da própria ação
- * (também em leituras marcadas com @Auditar, como exportações — seção 9).
- * As alterações são gravadas mesmo se o handler falhar depois de escrever no banco.
+ * Interceptor global de auditoria.
+ * - Antes do handler, guarda no contexto o nome da ação (@Auditar) e o motivo do corpo: a
+ *   extensão do Prisma usa isso ao gravar cada alteração na mesma transação.
+ * - Se a requisição de escrita não alterou nada no banco, grava uma linha da própria ação
+ *   (também em leituras marcadas com @Auditar, como exportações — seção 9).
  */
 @Injectable()
 export class AuditoriaInterceptor implements NestInterceptor {
@@ -39,18 +39,15 @@ export class AuditoriaInterceptor implements NestInterceptor {
       alvos,
     );
 
-    const finalizar = async (resultado?: unknown) => {
+    const body = req.body as { motivo?: unknown } | undefined;
+    const motivo = typeof body?.motivo === 'string' ? body.motivo : null;
+    const inicio = contextoAtual();
+    if (inicio) inicio.auditoria = { acao: opcoes?.acao, entidade: opcoes?.entidade, motivo };
+
+    const finalizar = async (resultado: unknown) => {
       const contexto = contextoAtual();
       if (!contexto) return;
-      const body = req.body as { motivo?: unknown } | undefined;
-      const motivo = typeof body?.motivo === 'string' ? body.motivo : null;
       const houveAlteracao = contexto.alteracoes.length > 0;
-
-      await this.auditoria.gravarAlteracoes(contexto, {
-        acao: opcoes?.acao,
-        entidade: opcoes?.entidade,
-        motivo,
-      });
 
       if (
         !houveAlteracao &&
@@ -75,11 +72,10 @@ export class AuditoriaInterceptor implements NestInterceptor {
       }
     };
 
-    return next.handle().pipe(
-      concatMap((resultado: unknown) => from(finalizar(resultado ?? null).then(() => resultado))),
-      catchError((erro: unknown) =>
-        from(finalizar()).pipe(concatMap(() => throwError(() => erro))),
-      ),
-    );
+    return next
+      .handle()
+      .pipe(
+        concatMap((resultado: unknown) => from(finalizar(resultado ?? null).then(() => resultado))),
+      );
   }
 }

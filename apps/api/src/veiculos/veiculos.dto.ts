@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
 import { Aparar, Placa } from '../common/validacao/validadores.js';
@@ -60,6 +60,11 @@ export class VeiculoDto {
 }
 
 export class AtualizarVeiculoDto extends PartialType(VeiculoDto) {}
+
+/** A oficina não muda placa nem chassi (identidade do carro): só o próprio cliente. */
+export class AtualizarVeiculoOficinaDto extends PartialType(
+  OmitType(VeiculoDto, ['placa', 'chassi'] as const),
+) {}
 
 /** A oficina cadastra o veículo de um cliente vinculado a ela. */
 export class CriarVeiculoOficinaDto extends VeiculoDto {

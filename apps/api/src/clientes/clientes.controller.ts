@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Query } from '@nest
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Auditar } from '../auditoria/auditoria.decorators.js';
 import { AtorAtual, Atores } from '../common/auth/decorators.js';
-import type { AtorCliente } from '../common/contexto/contexto.js';
+import type { AtorCliente, AtorUsuario } from '../common/contexto/contexto.js';
 import {
   AtualizarPerfilClienteDto,
   FiltroClientesDto,
@@ -18,25 +18,29 @@ export class ClientesOficinaController {
   constructor(private readonly clientes: ClientesService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Clientes vinculados à oficina' })
-  listar(@Query() filtro: FiltroClientesDto) {
-    return this.clientes.listarDaOficina(filtro);
+  @ApiOperation({
+    summary: 'Clientes vinculados à oficina',
+    description: 'CPF, RG, nascimento, e-mail e endereço só para MASTER, GERENTE ou FINANCEIRO.',
+  })
+  listar(@AtorAtual() ator: AtorUsuario, @Query() filtro: FiltroClientesDto) {
+    return this.clientes.listarDaOficina(ator, filtro);
   }
 
   @Get(':clienteId')
   @ApiOperation({ summary: 'Detalha o cliente e os veículos dele vinculados à oficina' })
-  detalhar(@Param('clienteId', ParseUUIDPipe) clienteId: string) {
-    return this.clientes.detalharDaOficina(clienteId);
+  detalhar(@AtorAtual() ator: AtorUsuario, @Param('clienteId', ParseUUIDPipe) clienteId: string) {
+    return this.clientes.detalharDaOficina(ator, clienteId);
   }
 
   @Patch(':clienteId/observacoes')
   @Auditar({ acao: 'CLIENTE_OBSERVACOES_ALTERADAS' })
   @ApiOperation({ summary: 'Anotações internas sobre o cliente (o cliente não vê)' })
   observacoes(
+    @AtorAtual() ator: AtorUsuario,
     @Param('clienteId', ParseUUIDPipe) clienteId: string,
     @Body() dto: ObservacoesClienteDto,
   ) {
-    return this.clientes.atualizarObservacoes(clienteId, dto.observacoesInternas ?? null);
+    return this.clientes.atualizarObservacoes(ator, clienteId, dto.observacoesInternas ?? null);
   }
 }
 

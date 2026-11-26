@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Prisma, type TipoAtor } from '../generated/prisma/client.js';
 import type { AlteracaoAuditada, Ator, ContextoRequisicao } from '../common/contexto/contexto.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -53,39 +53,26 @@ const json = (v: unknown) =>
   v === undefined || v === null ? Prisma.DbNull : (v as Prisma.InputJsonValue);
 
 /**
- * Grava o AuditLog. A tabela é somente inserção (trigger no banco); aqui só existe `create`.
- * Uma falha ao gravar o log é registrada no console, mas não desfaz a ação do usuário.
+ * AuditLog (seção 9). A tabela é somente inserção (trigger + usuário de banco sem UPDATE/
+ * DELETE); aqui só existe `create`. Alterações de dados são registradas pela extensão do
+ * Prisma na mesma transação; este service grava os eventos avulsos (login, exportação...).
+ * Se gravar falhar, o erro sobe: nada passa despercebido.
  */
 @Injectable()
 export class AuditoriaService {
-  private readonly logger = new Logger(AuditoriaService.name);
-
   constructor(private readonly prisma: PrismaService) {}
 
-  async gravar(entrada: EntradaAuditoria): Promise<void> {
-    try {
-      await this.prisma.auditLog.create({
-        data: {
-          ...entrada,
-          antes: json(entrada.antes),
-          depois: json(entrada.depois),
-          motivo: entrada.motivo?.slice(0, 1000) ?? null,
-        },
-      });
-    } catch (erro) {
-      this.logger.error(`Falha ao gravar auditoria (${entrada.acao})`, erro as Error);
-    }
+  dadosDoLog(entrada: EntradaAuditoria): Prisma.AuditLogUncheckedCreateInput {
+    return {
+      ...entrada,
+      antes: json(entrada.antes),
+      depois: json(entrada.depois),
+      motivo: entrada.motivo?.slice(0, 1000) ?? null,
+    };
   }
 
-  /** Grava uma linha de log por alteração capturada na requisição. */
-  async gravarAlteracoes(
-    contexto: ContextoRequisicao,
-    extra: { acao?: string; entidade?: string; motivo?: string | null } = {},
-  ): Promise<void> {
-    const alteracoes = contexto.alteracoes.splice(0);
-    for (const alteracao of alteracoes) {
-      await this.gravar(this.entradaDeAlteracao(alteracao, contexto, extra));
-    }
+  async gravar(entrada: EntradaAuditoria): Promise<void> {
+    await this.prisma.auditLog.create({ data: this.dadosDoLog(entrada) });
   }
 
   entradaDeAlteracao(

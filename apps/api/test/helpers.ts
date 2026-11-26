@@ -163,8 +163,15 @@ export async function tokenCliente(app: INestApplication<App>, login: string): P
   return (res.body as { accessToken: string }).accessToken;
 }
 
+/** Cada código TOTP vale uma vez: logins seguidos do mesmo admin usam o passo seguinte. */
+const usosTotp = new Map<string, number>();
+
 export async function tokenAdmin(app: INestApplication<App>, admin: AdminCenario): Promise<string> {
-  const codigoTotp = app.get(TotpService).gerarCodigo(admin.segredoTotp);
+  const usos = usosTotp.get(admin.id) ?? 0;
+  usosTotp.set(admin.id, usos + 1);
+  const codigoTotp = app
+    .get(TotpService)
+    .gerarCodigo(admin.segredoTotp, Date.now() + usos * 30_000);
   const res = await request(app.getHttpServer())
     .post('/auth/plataforma/login')
     .send({ email: admin.email, senha: SENHA, codigoTotp })

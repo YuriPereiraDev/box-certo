@@ -33,7 +33,10 @@ function obrigatoria(nome: string): string {
 
 async function main() {
   const prisma = new PrismaClient({
-    adapter: new PrismaPg({ connectionString: obrigatoria('DATABASE_URL') }),
+    // O seed roda como dono do banco (o usuário da API não tem todos os privilégios).
+    adapter: new PrismaPg({
+      connectionString: process.env.DATABASE_URL_MIGRACAO ?? obrigatoria('DATABASE_URL'),
+    }),
   });
 
   try {

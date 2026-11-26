@@ -38,6 +38,19 @@ export const MAX_FOTOS_POR_OS = 30;
 /** Status em que o orçamento ainda pode ser montado/alterado. */
 const STATUS_EDITAVEIS: StatusOS[] = ['ABERTA', 'EM_DIAGNOSTICO', 'ORCAMENTO_ENVIADO', 'APROVADA'];
 const STATUS_ENCERRADOS: StatusOS[] = ['CONCLUIDA', 'CANCELADA'];
+const STATUS_NAO_ENCERRADOS: StatusOS[] = [
+  'ABERTA',
+  'EM_DIAGNOSTICO',
+  'ORCAMENTO_ENVIADO',
+  'APROVADA',
+  'EM_EXECUCAO',
+];
+
+/** Trava a OS até o fim da transação (edição da oficina × resposta/cancelamento do cliente). */
+export async function travarOs(tx: Tx, id: string): Promise<void> {
+  const chave = `os:${id}`;
+  await tx.$queryRaw`SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtext(${chave}))) t`;
+}
 
 const naoPermite = (mensagem: string) =>
   new UnprocessableEntityException({ codigo: 'STATUS_NAO_PERMITE', mensagem });
@@ -262,6 +275,32 @@ export class OrdensServicoService {
     }
   }
 
+  /**
+   * Transação com a OS travada (a mesma trava da resposta do cliente). Relê o status dentro da
+   * trava: se a OS mudou desde que foi carregada (ex.: o cliente acabou de responder), 409.
+   */
+  private async comOsTravada<T>(
+    id: string,
+    permitidos: StatusOS[],
+    fn: (tx: Tx, status: StatusOS) => Promise<T>,
+  ): Promise<T> {
+    return this.banco.sistema.$transaction(async (tx) => {
+      await travarOs(tx, id);
+      const { status } = await tx.ordemServico.findUniqueOrThrow({
+        where: { id },
+        select: { status: true },
+      });
+      if (!permitidos.includes(status)) {
+        throw new ConflictException({
+          codigo: 'OS_ALTERADA',
+          mensagem: 'A OS mudou enquanto você trabalhava nela. Recarregue e tente de novo.',
+          status,
+        });
+      }
+      return fn(tx, status);
+    });
+  }
+
   private async osEditavel(ator: AtorUsuario, id: string) {
     const os = await this.carregar(ator, id);
     this.exigirEdicao(ator, os);
@@ -389,8 +428,8 @@ export class OrdensServicoService {
   async adicionarItem(ator: AtorUsuario, id: string, dto: ItemOrcamentoDto) {
     const os = await this.osEditavel(ator, id);
     const dados = await this.montarItem(ator, dto);
-    await this.banco.sistema.$transaction(async (tx) => {
-      await this.prepararAlteracaoDeItens(tx, os, ator);
+    await this.comOsTravada(os.id, STATUS_EDITAVEIS, async (tx, status) => {
+      await this.prepararAlteracaoDeItens(tx, { id: os.id, status }, ator);
       await tx.itemOrcamento.create({
         data: { ...dados, oficinaId: os.oficinaId, ordemServicoId: os.id },
       });
@@ -408,8 +447,8 @@ export class OrdensServicoService {
     const os = await this.osEditavel(ator, id);
     const atual = this.itemDaOs(os, itemId);
     const dados = await this.montarItem(ator, dto, atual);
-    await this.banco.sistema.$transaction(async (tx) => {
-      await this.prepararAlteracaoDeItens(tx, os, ator);
+    await this.comOsTravada(os.id, STATUS_EDITAVEIS, async (tx, status) => {
+      await this.prepararAlteracaoDeItens(tx, { id: os.id, status }, ator);
       await tx.itemOrcamento.update({ where: { id: itemId }, data: dados });
     });
     return this.detalhar(ator, id);
@@ -419,8 +458,8 @@ export class OrdensServicoService {
   async removerItem(ator: AtorUsuario, id: string, itemId: string) {
     const os = await this.osEditavel(ator, id);
     this.itemDaOs(os, itemId);
-    await this.banco.sistema.$transaction(async (tx) => {
-      await this.prepararAlteracaoDeItens(tx, os, ator);
+    await this.comOsTravada(os.id, STATUS_EDITAVEIS, async (tx, status) => {
+      await this.prepararAlteracaoDeItens(tx, { id: os.id, status }, ator);
       await tx.itemOrcamento.update({ where: { id: itemId }, data: { deletedAt: new Date() } });
     });
     return this.detalhar(ator, id);
@@ -436,8 +475,8 @@ export class OrdensServicoService {
     if (item.statusCliente !== 'RECUSADO') {
       throw new BadRequestException('A peça precisa ter sido recusada pelo cliente');
     }
-    await this.banco.sistema.$transaction(async (tx) => {
-      await this.prepararAlteracaoDeItens(tx, os, ator);
+    await this.comOsTravada(os.id, STATUS_EDITAVEIS, async (tx, status) => {
+      await this.prepararAlteracaoDeItens(tx, { id: os.id, status }, ator);
       await tx.itemOrcamento.create({ data: itemPecaDoCliente(item, 'PENDENTE') });
     });
     return this.detalhar(ator, id);
@@ -453,7 +492,7 @@ export class OrdensServicoService {
     }
     if (os.itens.length === 0)
       throw new BadRequestException('Adicione ao menos um item antes de enviar');
-    await this.banco.sistema.$transaction(async (tx) => {
+    await this.comOsTravada(id, ['ABERTA', 'EM_DIAGNOSTICO'], async (tx) => {
       // Cada envio pede a aprovação de todos os itens de novo (e devolve reservas antigas).
       await this.reservas.liberarDaOs(tx, id, ator, 'Orçamento reenviado');
       await tx.itemOrcamento.updateMany({
@@ -474,10 +513,12 @@ export class OrdensServicoService {
     this.exigirEdicao(ator, os);
     if (os.status !== 'APROVADA')
       throw naoPermite('A execução começa depois da aprovação do cliente');
-    await this.banco.tenant.ordemServico.update({
-      where: { id },
-      data: { status: 'EM_EXECUCAO', iniciadoEm: new Date() },
-    });
+    await this.comOsTravada(id, ['APROVADA'], (tx) =>
+      tx.ordemServico.update({
+        where: { id },
+        data: { status: 'EM_EXECUCAO', iniciadoEm: new Date() },
+      }),
+    );
     return this.detalhar(ator, id);
   }
 
@@ -486,7 +527,7 @@ export class OrdensServicoService {
     this.exigirEdicao(ator, os);
     if (os.status !== 'EM_EXECUCAO') throw naoPermite('Só OS em execução podem ser concluídas');
     const agora = new Date();
-    await this.banco.sistema.$transaction(async (tx) => {
+    await this.comOsTravada(id, ['EM_EXECUCAO'], async (tx) => {
       // Saída do estoque das peças reservadas (baixa quantidade e reserva).
       await this.reservas.baixarDaOs(tx, id, ator);
       await tx.ordemServico.update({
@@ -521,10 +562,12 @@ export class OrdensServicoService {
       throw naoPermite('Pagamento só depois da aprovação do orçamento');
     }
     if (os.statusPagamento === 'PAGO_NA_OFICINA') throw naoPermite('O pagamento já foi registrado');
-    await this.banco.tenant.ordemServico.update({
-      where: { id },
+    // Atômico: dois registros simultâneos não pagam duas vezes.
+    const pago = await this.banco.tenant.ordemServico.updateMany({
+      where: { id, statusPagamento: 'PENDENTE' },
       data: { statusPagamento: 'PAGO_NA_OFICINA', formaPagamento, pagoEm: new Date() },
     });
+    if (pago.count === 0) throw naoPermite('O pagamento já foi registrado');
     return this.detalhar(ator, id);
   }
 
@@ -532,7 +575,7 @@ export class OrdensServicoService {
     const os = await this.carregar(ator, id);
     this.exigirEdicao(ator, os);
     if (STATUS_ENCERRADOS.includes(os.status)) throw naoPermite('A OS já está encerrada');
-    await this.banco.sistema.$transaction(async (tx) => {
+    await this.comOsTravada(id, STATUS_NAO_ENCERRADOS, async (tx) => {
       await tx.ordemServico.update({
         where: { id },
         data: {

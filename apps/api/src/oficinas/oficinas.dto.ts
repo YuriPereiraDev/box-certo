@@ -182,6 +182,17 @@ export class ConfigAgendamentoDto {
   @Min(1)
   @Max(365)
   janelaAgendamentoDias?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Agendamentos futuros que um cliente pode ter ao mesmo tempo (os da oficina não contam)',
+    default: 3,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  maxAgendamentosPorCliente?: number;
 }
 
 export class HorarioDiaDto {

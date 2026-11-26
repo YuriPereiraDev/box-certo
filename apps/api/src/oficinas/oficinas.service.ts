@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ArquivosService } from '../arquivos/arquivos.service.js';
 import { StorageService } from '../arquivos/storage.service.js';
@@ -51,6 +52,7 @@ const SELECAO_OFICINA = {
   duracaoPadraoAgendamentoMin: true,
   passoAgendaMin: true,
   janelaAgendamentoDias: true,
+  maxAgendamentosPorCliente: true,
   createdAt: true,
   plano: { select: { id: true, nome: true, maxMecanicos: true } },
 } as const;
@@ -103,10 +105,26 @@ export class OficinasService {
 
     const senhaHash = await this.senhas.gerarHash(dto.master.senha);
     const agora = new Date();
+    // Ids gerados antes: a auditoria (gravada dentro da transação) já sai em nome do novo master.
+    const oficinaId = randomUUID();
+    const masterId = randomUUID();
+    const ctx = contextoAtual();
+    if (ctx) {
+      ctx.ator = {
+        tipo: 'USUARIO',
+        id: masterId,
+        nome: dto.master.nome,
+        email: dto.master.email,
+        oficinaId,
+        role: 'MASTER',
+        permissoes: [],
+      };
+    }
 
     const { oficina, master } = await this.banco.sistema.$transaction(async (tx) => {
       const oficina = await tx.oficina.create({
         data: {
+          id: oficinaId,
           ...dto.oficina,
           planoId: plano.id,
           status: 'TESTE',
@@ -116,6 +134,7 @@ export class OficinasService {
       });
       const master = await tx.user.create({
         data: {
+          id: masterId,
           oficinaId: oficina.id,
           nome: dto.master.nome,
           email: dto.master.email,
@@ -132,19 +151,6 @@ export class OficinasService {
       return { oficina, master };
     });
 
-    // Atribui a auditoria do cadastro ao próprio master recém-criado.
-    const ctx = contextoAtual();
-    if (ctx) {
-      ctx.ator = {
-        tipo: 'USUARIO',
-        id: master.id,
-        nome: master.nome,
-        email: master.email,
-        oficinaId: oficina.id,
-        role: 'MASTER',
-        permissoes: [],
-      };
-    }
     return this.auth.concluirLogin('USUARIO', master.id, oficina.id);
   }
 

@@ -1,6 +1,8 @@
 import {
   ConflictException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -31,6 +33,8 @@ const ENTIDADE_DO_ATOR: Record<TipoAtorAutenticado, string> = {
   SUPORTE: 'SessaoSuporte',
 };
 
+const JANELA_BLOQUEIO_MS = 15 * 60_000;
+
 const CREDENCIAIS_INVALIDAS = 'E-mail ou senha inválidos';
 
 @Injectable()
@@ -59,6 +63,11 @@ export class AuthService {
       include: { oficina: { select: { id: true, nome: true, status: true } } },
     });
 
+    await this.exigirContaLiberada(
+      'USUARIO',
+      candidatos.map((c) => c.id),
+      email,
+    );
     const validos = [];
     for (const c of candidatos) {
       if (await this.senhas.verificar(c.senhaHash, dto.senha)) validos.push(c);
@@ -113,6 +122,7 @@ export class AuthService {
       where: ehCpf ? { cpf } : { email: login },
     });
 
+    if (cliente) await this.exigirContaLiberada('CLIENTE', [cliente.id]);
     const ok = await this.senhas.verificar(cliente?.ativo ? cliente.senhaHash : null, dto.senha);
     if (!cliente?.ativo || !ok) {
       await this.registrar({
@@ -134,6 +144,7 @@ export class AuthService {
   ): Promise<RespostaLogin | RespostaConfig2faPendente> {
     const email = dto.email.trim().toLowerCase();
     const admin = await this.prisma.platformAdmin.findUnique({ where: { email } });
+    if (admin) await this.exigirContaLiberada('PLATAFORMA', [admin.id], email);
     const ok = await this.senhas.verificar(admin?.ativo ? admin.senhaHash : null, dto.senha);
 
     if (!admin?.ativo || !ok) {
@@ -161,7 +172,11 @@ export class AuthService {
         mensagem: 'Informe o código do app autenticador',
       });
     }
-    if (!this.totp.validar(this.cripto.descriptografar(admin.totpSecret), dto.codigoTotp)) {
+    const passo = this.totp.passoValido(
+      this.cripto.descriptografar(admin.totpSecret),
+      dto.codigoTotp,
+    );
+    if (passo === null || !(await this.consumirPassoTotp(admin.id, passo))) {
       await this.registrar({
         acao: 'LOGIN_FALHA_2FA',
         entidade: 'PlatformAdmin',
@@ -203,7 +218,8 @@ export class AuthService {
     if (!admin?.ativo || admin.totpAtivadoEm || !admin.totpSecret) {
       throw new UnauthorizedException('Token inválido');
     }
-    if (!this.totp.validar(this.cripto.descriptografar(admin.totpSecret), codigo)) {
+    const passo = this.totp.passoValido(this.cripto.descriptografar(admin.totpSecret), codigo);
+    if (passo === null || !(await this.consumirPassoTotp(admin.id, passo))) {
       throw new UnauthorizedException({ codigo: 'TOTP_INVALIDO', mensagem: 'Código inválido' });
     }
     await this.prisma.platformAdmin.update({
@@ -323,6 +339,57 @@ export class AuthService {
   }
 
   // --------------------------------------------------------------- interno
+
+  /**
+   * Bloqueio por conta (além do limite por IP): N falhas em 15 min, contadas desde o último
+   * login bem-sucedido, bloqueiam a conta por 15 min mesmo vindo de IPs diferentes.
+   */
+  private async exigirContaLiberada(atorTipo: TipoAtorAutenticado, ids: string[], email?: string) {
+    if (ids.length === 0 && !email) return;
+    const max = Number(process.env.LOGIN_MAX_FALHAS_CONTA ?? 10);
+    const janela = new Date(Date.now() - JANELA_BLOQUEIO_MS);
+    const ultimoSucesso = ids.length
+      ? await this.prisma.auditLog.findFirst({
+          where: {
+            acao: 'LOGIN_SUCESSO',
+            atorTipo,
+            atorId: { in: ids },
+            createdAt: { gt: janela },
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true },
+        })
+      : null;
+    const falhas = await this.prisma.auditLog.count({
+      where: {
+        atorTipo,
+        acao: { in: ['LOGIN_FALHA', 'LOGIN_FALHA_2FA'] },
+        createdAt: { gt: ultimoSucesso?.createdAt ?? janela },
+        OR: [
+          ...(ids.length ? [{ atorId: { in: ids } }] : []),
+          ...(email ? [{ depois: { path: ['email'], equals: email } }] : []),
+        ],
+      },
+    });
+    if (falhas >= max) {
+      throw new HttpException(
+        {
+          codigo: 'CONTA_BLOQUEADA_TEMPORARIAMENTE',
+          mensagem: 'Muitas tentativas erradas nesta conta. Tente de novo em 15 minutos.',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+  }
+
+  /** Aceita o passo TOTP só uma vez (atômico): o mesmo código não serve para dois logins. */
+  private async consumirPassoTotp(adminId: string, passo: number): Promise<boolean> {
+    const r = await this.prisma.platformAdmin.updateMany({
+      where: { id: adminId, OR: [{ totpUltimoPasso: null }, { totpUltimoPasso: { lt: passo } }] },
+      data: { totpUltimoPasso: passo },
+    });
+    return r.count === 1;
+  }
 
   /** Abre a sessão (tokens + log de login). Usado também após cadastros públicos. */
   async concluirLogin(

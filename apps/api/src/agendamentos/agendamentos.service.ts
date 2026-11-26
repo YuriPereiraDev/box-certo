@@ -86,6 +86,7 @@ interface ConfigAgenda {
   duracaoPadraoAgendamentoMin: number;
   passoAgendaMin: number;
   janelaAgendamentoDias: number;
+  maxAgendamentosPorCliente: number;
   antecedenciaCancelamentoHoras: number;
 }
 
@@ -128,6 +129,7 @@ export class AgendamentosService {
         duracaoPadraoAgendamentoMin: true,
         passoAgendaMin: true,
         janelaAgendamentoDias: true,
+        maxAgendamentosPorCliente: true,
         antecedenciaCancelamentoHoras: true,
       },
     });
@@ -291,6 +293,23 @@ export class AgendamentosService {
     const fim = new Date(dto.inicio.getTime() + cfg.duracaoPadraoAgendamentoMin * 60_000);
 
     return this.comTrava(dto.oficinaId, async (tx) => {
+      // Ninguém lota a agenda: limite de agendamentos futuros feitos pelo cliente nesta oficina.
+      const futuros = await tx.agendamento.count({
+        where: {
+          oficinaId: dto.oficinaId,
+          clienteId: cliente.id,
+          criadoPorTipo: 'CLIENTE',
+          status: { in: [...STATUS_QUE_OCUPAM] },
+          fim: { gt: new Date() },
+        },
+      });
+      if (futuros >= cfg.maxAgendamentosPorCliente) {
+        throw new UnprocessableEntityException({
+          codigo: 'LIMITE_AGENDAMENTOS',
+          mensagem: `Você já tem ${futuros} agendamento(s) nesta oficina. Cancele um ou aguarde para marcar outro.`,
+          limite: cfg.maxAgendamentosPorCliente,
+        });
+      }
       await this.verificarHorario(tx, {
         oficinaId: dto.oficinaId,
         inicio: dto.inicio,

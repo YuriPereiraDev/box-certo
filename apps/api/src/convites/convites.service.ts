@@ -1,4 +1,4 @@
-import { randomInt } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import {
   ConflictException,
   ForbiddenException,
@@ -214,11 +214,14 @@ export class ConvitesService {
 
     const { senha, aceiteLgpd: _aceite, ...dados } = dto;
     const senhaHash = await this.senhas.gerarHash(senha);
+    // Id gerado antes: a auditoria (gravada dentro da transação) já sai em nome do cliente.
+    const clienteId = randomUUID();
+    this.atribuirAuditoria({ id: clienteId, nome: dados.nome, email: dados.email });
 
     const cliente = await this.banco.sistema.$transaction(async (tx) => {
       await this.consumirUso(tx, convite.id);
       const cliente = await tx.cliente.create({
-        data: { ...dados, senhaHash, consentimentoLgpdEm: new Date() },
+        data: { id: clienteId, ...dados, senhaHash, consentimentoLgpdEm: new Date() },
       });
       await tx.clienteOficina.create({
         data: { clienteId: cliente.id, oficinaId: convite.oficinaId, conviteId: convite.id },
@@ -226,7 +229,6 @@ export class ConvitesService {
       return cliente;
     });
 
-    this.atribuirAuditoria(cliente);
     return this.auth.concluirLogin('CLIENTE', cliente.id);
   }
 

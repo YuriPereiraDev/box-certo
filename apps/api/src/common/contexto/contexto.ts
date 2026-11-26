@@ -56,7 +56,10 @@ export interface ContextoRequisicao {
   ip?: string;
   userAgent?: string;
   origem?: string;
+  /** Alterações já auditadas nesta requisição (o log é gravado na transação de cada uma). */
   alteracoes: AlteracaoAuditada[];
+  /** Nome da ação (@Auditar) e motivo do corpo, definidos pelo interceptor antes do handler. */
+  auditoria?: { acao?: string; entidade?: string; motivo?: string | null };
 }
 
 /** Contexto por requisição (AsyncLocalStorage), preenchido pelo middleware e pelo AuthGuard. */

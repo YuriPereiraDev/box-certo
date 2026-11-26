@@ -526,10 +526,12 @@ describe('Plataforma (e2e)', () => {
 
   describe('logs: alertas e saúde', () => {
     it('falhas de login, exclusões em massa e atividade de madrugada', async () => {
+      // E-mail único: as falhas de execuções anteriores bloqueariam a conta (bloqueio por conta).
+      const atorIdAtacante = randomUUID().slice(0, 8);
       for (let i = 0; i < 5; i++) {
         await http()
           .post('/auth/oficina/login')
-          .send({ email: 'atacante@teste.local', senha: 'x' })
+          .send({ email: `atacante-${atorIdAtacante}@teste.local`, senha: 'x' })
           .expect(401);
       }
       const atorId = randomUUID();

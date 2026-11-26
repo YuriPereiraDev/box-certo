@@ -5,6 +5,7 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { createReadStream } from 'node:fs';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
@@ -18,24 +19,40 @@ export const VALIDADE_URL_SEGUNDOS = 15 * 60;
 @Injectable()
 export class StorageService {
   private readonly s3: S3Client;
+  /** Cliente só para assinar URLs com o endereço público (S3_PUBLIC_ENDPOINT). */
+  private readonly s3Publico: S3Client;
   private readonly bucket: string;
 
   constructor(config: ConfigService) {
     this.bucket = config.getOrThrow<string>('S3_BUCKET');
-    this.s3 = new S3Client({
-      endpoint: config.getOrThrow<string>('S3_ENDPOINT'),
+    const base = {
       region: config.get<string>('S3_REGION') ?? 'us-east-1',
       forcePathStyle: true,
       credentials: {
         accessKeyId: config.getOrThrow<string>('S3_ACCESS_KEY'),
         secretAccessKey: config.getOrThrow<string>('S3_SECRET_KEY'),
       },
+    };
+    const interno = config.getOrThrow<string>('S3_ENDPOINT');
+    this.s3 = new S3Client({ ...base, endpoint: interno });
+    // A API pode falar com o storage por um endereço interno, mas o app precisa do público.
+    this.s3Publico = new S3Client({
+      ...base,
+      endpoint: config.get<string>('S3_PUBLIC_ENDPOINT') || interno,
     });
   }
 
-  async enviar(chave: string, conteudo: Buffer, mime: string): Promise<void> {
+  /** Envia um Buffer ou, em streaming, o arquivo temporário do upload. */
+  async enviar(
+    chave: string,
+    conteudo: Buffer | { caminho: string; tamanho: number },
+    mime: string,
+  ): Promise<void> {
+    const corpo = Buffer.isBuffer(conteudo)
+      ? { Body: conteudo }
+      : { Body: createReadStream(conteudo.caminho), ContentLength: conteudo.tamanho };
     await this.s3.send(
-      new PutObjectCommand({ Bucket: this.bucket, Key: chave, Body: conteudo, ContentType: mime }),
+      new PutObjectCommand({ Bucket: this.bucket, Key: chave, ContentType: mime, ...corpo }),
     );
   }
 
@@ -45,7 +62,7 @@ export class StorageService {
   }
 
   urlDeLeitura(chave: string): Promise<string> {
-    return getSignedUrl(this.s3, new GetObjectCommand({ Bucket: this.bucket, Key: chave }), {
+    return getSignedUrl(this.s3Publico, new GetObjectCommand({ Bucket: this.bucket, Key: chave }), {
       expiresIn: VALIDADE_URL_SEGUNDOS,
     });
   }

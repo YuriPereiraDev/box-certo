@@ -72,11 +72,30 @@ export class EnvVars {
   @IsOptional()
   S3_REGION?: string;
 
+  /** Endereço público do storage para os links assinados (padrão: S3_ENDPOINT). */
+  @IsString()
+  @IsOptional()
+  S3_PUBLIC_ENDPOINT?: string;
+
   /** Tentativas de login por IP por minuto. */
   @Type(() => Number)
   @IsInt()
   @Min(1)
   RATE_LIMIT_LOGIN = 5;
+
+  /** Falhas de login na mesma conta (15 min) antes de bloquear a conta. */
+  @Type(() => Number)
+  @IsInt()
+  @Min(3)
+  LOGIN_MAX_FALHAS_CONTA = 10;
+
+  /**
+   * Proxy reverso na frente da API (nginx, Cloudflare): 'false' (padrão), 'true', número de
+   * saltos ou lista de IPs/sub-redes. Sem isso, atrás de proxy todo mundo teria o mesmo IP.
+   */
+  @IsString()
+  @IsOptional()
+  TRUST_PROXY?: string;
 
   /** Requisições por IP por minuto (geral). */
   @Type(() => Number)

@@ -55,15 +55,23 @@ type Delegate = {
   findMany(args: unknown): Promise<Registro[]>;
 };
 
+/** Cliente capaz de ler o modelo e gravar o AuditLog (transação base ou estendida). */
+export type ClienteDeEscrita = object;
+
+export interface OpcoesAuditoria {
+  /** Transação interativa em andamento, se houver (o log entra nela). */
+  transacaoAtual: () => ClienteDeEscrita | undefined;
+  /** Monta os dados do AuditLog para a alteração (ator, ação, motivo, IP...). */
+  montarLog: (alteracao: AlteracaoAuditada) => Prisma.AuditLogUncheckedCreateInput;
+}
+
 /**
- * Extensão do Prisma que captura `antes` e `depois` de toda escrita.
- * As alterações são entregues a `registrar`, que as junta ao contexto da requisição
- * (o interceptor grava o AuditLog) ou grava direto quando não há requisição (jobs).
+ * Extensão do Prisma que audita toda escrita: lê o "antes", executa e grava o AuditLog com
+ * "antes" e "depois" **na mesma transação** da alteração. Dentro de `$transaction` usa a
+ * transação em andamento; fora dela abre uma só para a escrita e o log. Se o log falhar, a
+ * alteração é desfeita.
  */
-export function extensaoAuditoria(
-  base: PrismaClient,
-  registrar: (alteracao: AlteracaoAuditada) => Promise<void> | void,
-) {
+export function extensaoAuditoria(base: PrismaClient, opcoes: OpcoesAuditoria) {
   return Prisma.defineExtension({
     name: 'auditoria',
     query: {
@@ -73,40 +81,60 @@ export function extensaoAuditoria(
             return query(args);
           }
           const nomeDelegate = model.charAt(0).toLowerCase() + model.slice(1);
-          const delegate = (base as unknown as Record<string, Delegate>)[nomeDelegate];
           const where = (args as { where?: unknown }).where;
 
-          let antes: Registro | Registro[] = null;
-          if (operation === 'update' || operation === 'upsert' || operation === 'delete') {
-            antes = await delegate.findUnique({ where });
-          } else if (operation.startsWith('updateMany') || operation === 'deleteMany') {
-            antes = await delegate.findMany({ where, take: 100 });
-          }
+          const executar = async (
+            db: ClienteDeEscrita,
+            executarOperacao: () => Promise<unknown>,
+          ) => {
+            const delegate = (db as Record<string, Delegate>)[nomeDelegate];
+            let antes: Registro | Registro[] = null;
+            if (operation === 'update' || operation === 'upsert' || operation === 'delete') {
+              antes = await delegate.findUnique({ where });
+            } else if (operation.startsWith('updateMany') || operation === 'deleteMany') {
+              antes = await delegate.findMany({ where, take: 100 });
+            }
 
-          const resultado: unknown = await query(args);
+            const resultado: unknown = await executarOperacao();
 
-          const umRegistro =
-            operation === 'create' || operation === 'update' || operation === 'upsert';
-          // delete: não há "depois"; operações em lote: { count } ou a lista retornada.
-          const depois = operation === 'delete' ? null : resultado;
-          const referencia = (
-            umRegistro ? resultado : Array.isArray(antes) ? null : antes
-          ) as Registro;
+            const umRegistro =
+              operation === 'create' || operation === 'update' || operation === 'upsert';
+            // delete: não há "depois"; operações em lote: { count } ou a lista retornada.
+            const depois = operation === 'delete' ? null : resultado;
+            const referencia = (
+              umRegistro ? resultado : Array.isArray(antes) ? null : antes
+            ) as Registro;
 
-          await registrar({
-            entidade: model,
-            operacao: operation,
-            entidadeId:
-              idDoRegistro(referencia) ?? idDoRegistro(Array.isArray(antes) ? null : antes),
-            oficinaId:
-              (typeof referencia?.oficinaId === 'string' ? referencia.oficinaId : null) ??
-              (!Array.isArray(antes) && typeof antes?.oficinaId === 'string'
-                ? antes.oficinaId
-                : null),
-            antes: protegerCampos(antes),
-            depois: protegerCampos(depois),
-          });
-          return resultado;
+            const alteracao: AlteracaoAuditada = {
+              entidade: model,
+              operacao: operation,
+              entidadeId:
+                idDoRegistro(referencia) ?? idDoRegistro(Array.isArray(antes) ? null : antes),
+              oficinaId:
+                (typeof referencia?.oficinaId === 'string' ? referencia.oficinaId : null) ??
+                (!Array.isArray(antes) && typeof antes?.oficinaId === 'string'
+                  ? antes.oficinaId
+                  : null),
+              antes: protegerCampos(antes),
+              depois: protegerCampos(depois),
+            };
+            await (db as { auditLog: { create(a: unknown): Promise<unknown> } }).auditLog.create({
+              data: opcoes.montarLog(alteracao),
+            });
+            return resultado;
+          };
+
+          const tx = opcoes.transacaoAtual();
+          if (tx) return executar(tx, () => query(args));
+          // Fora de transação: a escrita e o log vão juntos numa transação curta. Os args já
+          // passaram pela extensão de tenant (que fica por fora), então executar direto é igual.
+          return base.$transaction((t) =>
+            executar(t, () =>
+              (t as unknown as Record<string, Record<string, (a: unknown) => Promise<unknown>>>)[
+                nomeDelegate
+              ][operation](args),
+            ),
+          );
         },
       },
     },

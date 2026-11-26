@@ -1,11 +1,5 @@
-import {
-  ArgumentsHost,
-  Catch,
-  ExceptionFilter,
-  HttpException,
-  HttpStatus,
-  Logger,
-} from '@nestjs/common';
+import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from '@nestjs/common';
+import { ThrottlerException } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { Prisma } from '../../generated/prisma/client.js';
 import { ErroSemOficinaNoContexto } from '../../prisma/extensao-tenant.js';
@@ -69,7 +63,8 @@ export class ErrosFilter implements ExceptionFilter {
     if (erro instanceof HttpException) {
       const status = erro.getStatus();
       const resposta = erro.getResponse();
-      if (status === Number(HttpStatus.TOO_MANY_REQUESTS)) {
+      // Só o limite genérico do throttler ganha a mensagem padrão; bloqueios com código mantêm a sua.
+      if (erro instanceof ThrottlerException) {
         return {
           status,
           mensagem: 'Muitas tentativas. Aguarde um pouco e tente novamente.',

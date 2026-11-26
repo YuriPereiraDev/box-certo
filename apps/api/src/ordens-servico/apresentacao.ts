@@ -1,3 +1,4 @@
+import { podeVerDadosPessoais } from '../clientes/privacidade.js';
 import type { AtorUsuario } from '../common/contexto/contexto.js';
 import type { Prisma, StatusOS } from '../generated/prisma/client.js';
 import { calcularTotais, valoresDoItem } from './calculo.js';
@@ -28,8 +29,13 @@ export function podeVerCusto(ator: AtorUsuario): boolean {
 
 export function apresentarParaOficina(os: OsCompleta, ator: AtorUsuario) {
   const verCusto = podeVerCusto(ator);
+  const { cliente } = os;
   return {
     ...os,
+    // LGPD: e-mail e CPF do cliente só para MASTER, GERENTE ou FINANCEIRO.
+    cliente: podeVerDadosPessoais(ator)
+      ? cliente
+      : { id: cliente.id, nome: cliente.nome, telefone: cliente.telefone },
     itens: os.itens.map((i) => {
       const { custoUnitarioCentavos, deletedAt: _d, oficinaId: _o, ...resto } = i;
       return {

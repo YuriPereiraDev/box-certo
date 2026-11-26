@@ -10,7 +10,8 @@ export default defineConfig({
     path: 'prisma/migrations',
     seed: 'tsx prisma/seed.ts',
   },
+  // Migrações rodam com o dono do banco; a API usa DATABASE_URL (usuário restrito).
   datasource: {
-    url: env('DATABASE_URL'),
+    url: process.env.DATABASE_URL_MIGRACAO ?? env('DATABASE_URL'),
   },
 });

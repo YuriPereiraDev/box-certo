@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { open } from 'node:fs/promises';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Ator } from '../common/contexto/contexto.js';
 import { BancoService } from '../prisma/banco.service.js';
@@ -51,6 +52,22 @@ export function detectarImagem(buffer: Buffer): { mime: string; extensao: string
   return null;
 }
 
+/** Primeiros bytes do upload (em memória ou no arquivo temporário), para reconhecer o tipo. */
+export async function lerInicio(arquivo: Express.Multer.File, bytes = 32): Promise<Buffer> {
+  if (arquivo.buffer) return arquivo.buffer.subarray(0, bytes);
+  const fd = await open(arquivo.path, 'r');
+  try {
+    const { buffer, bytesRead } = await fd.read(Buffer.alloc(bytes), 0, bytes, 0);
+    return buffer.subarray(0, bytesRead);
+  } finally {
+    await fd.close();
+  }
+}
+
+function conteudoDoUpload(arquivo: Express.Multer.File) {
+  return arquivo.buffer ?? { caminho: arquivo.path, tamanho: arquivo.size };
+}
+
 export interface ArquivoPublico {
   id: string;
   mime: string;
@@ -92,10 +109,10 @@ export class ArquivosService {
     arquivo: Express.Multer.File | undefined,
     dados: { oficinaId: string | null; ticketId: string; ator: Ator },
   ) {
-    if (!arquivo?.buffer?.length)
-      throw new BadRequestException('Envie o arquivo no campo "arquivo"');
-    const imagem = detectarImagem(arquivo.buffer);
-    const tipo = imagem ?? detectarVideo(arquivo.buffer);
+    if (!arquivo?.size) throw new BadRequestException('Envie o arquivo no campo "arquivo"');
+    const inicio = await lerInicio(arquivo);
+    const imagem = detectarImagem(inicio);
+    const tipo = imagem ?? detectarVideo(inicio);
     if (!tipo) {
       throw new BadRequestException(
         'Formato não aceito. Envie foto (JPG, PNG, WEBP, HEIC) ou vídeo (MP4, MOV, WEBM, 3GP).',
@@ -108,7 +125,7 @@ export class ArquivosService {
       throw new BadRequestException('O vídeo pode ter no máximo 50 MB (e até 2 minutos)');
     }
     const chave = `tickets/${dados.ticketId}/${randomUUID()}.${tipo.extensao}`;
-    await this.storage.enviar(chave, arquivo.buffer, tipo.mime);
+    await this.storage.enviar(chave, conteudoDoUpload(arquivo), tipo.mime);
     try {
       return await this.banco.sistema.arquivo.create({
         data: {
@@ -139,13 +156,12 @@ export class ArquivosService {
     dados: { oficinaId: string; entidade: string; entidadeId: string; ator: Ator },
     aceitarPdf: boolean,
   ) {
-    if (!arquivo?.buffer?.length)
-      throw new BadRequestException('Envie o arquivo no campo "arquivo"');
+    if (!arquivo?.size) throw new BadRequestException('Envie o arquivo no campo "arquivo"');
+    const inicio = await lerInicio(arquivo);
     if (arquivo.size > TAMANHO_MAX_IMAGEM) {
       throw new BadRequestException('O arquivo pode ter no máximo 10 MB');
     }
-    const tipo =
-      detectarImagem(arquivo.buffer) ?? (aceitarPdf ? detectarPdf(arquivo.buffer) : null);
+    const tipo = detectarImagem(inicio) ?? (aceitarPdf ? detectarPdf(inicio) : null);
     if (!tipo) {
       throw new BadRequestException(
         aceitarPdf
@@ -155,7 +171,7 @@ export class ArquivosService {
     }
 
     const chave = `oficinas/${dados.oficinaId}/${dados.entidade.toLowerCase()}/${dados.entidadeId}/${randomUUID()}.${tipo.extensao}`;
-    await this.storage.enviar(chave, arquivo.buffer, tipo.mime);
+    await this.storage.enviar(chave, conteudoDoUpload(arquivo), tipo.mime);
     try {
       return await this.banco.tenant.arquivo.create({
         data: {

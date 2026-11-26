@@ -17,6 +17,7 @@ import { AtorAtual, Atores } from '../common/auth/decorators.js';
 import type { AtorCliente } from '../common/contexto/contexto.js';
 import {
   AtualizarVeiculoDto,
+  AtualizarVeiculoOficinaDto,
   CriarVeiculoOficinaDto,
   FiltroVeiculosDto,
   VeiculoDto,
@@ -54,8 +55,10 @@ export class VeiculosOficinaController {
 
   @Patch(':id')
   @Auditar({ acao: 'VEICULO_ATUALIZADO_PELA_OFICINA' })
-  @ApiOperation({ summary: 'Atualiza dados de um veículo vinculado à oficina' })
-  atualizar(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AtualizarVeiculoDto) {
+  @ApiOperation({
+    summary: 'Atualiza dados de um veículo vinculado à oficina (placa e chassi só o cliente)',
+  })
+  atualizar(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AtualizarVeiculoOficinaDto) {
     return this.veiculos.atualizarNaOficina(id, dto);
   }
 }

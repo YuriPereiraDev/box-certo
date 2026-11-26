@@ -1,10 +1,15 @@
 import { execSync } from 'node:child_process';
 import pg from 'pg';
-import { urlBancoTeste } from './banco-teste.js';
+import { garantirUsuarioApp } from '../prisma/usuario-app.js';
+import { urlsBancoTeste } from './banco-teste.js';
 
-/** Cria o banco de testes (se não existir) e aplica as migrações antes da suíte e2e. */
+/**
+ * Antes da suíte e2e: cria o banco de testes (se não existir), aplica as migrações como dono
+ * e garante o usuário restrito da API — os testes rodam com os mesmos privilégios de produção.
+ */
 export default async function setup(): Promise<void> {
-  const url = new URL(urlBancoTeste());
+  const { app, migracao } = urlsBancoTeste();
+  const url = new URL(migracao);
   const nome = url.pathname.replace(/^\//, '');
   if (!/^[a-z0-9_]+$/i.test(nome)) throw new Error(`Nome de banco de teste inválido: ${nome}`);
 
@@ -21,6 +26,7 @@ export default async function setup(): Promise<void> {
 
   execSync('npx prisma migrate deploy', {
     stdio: 'pipe',
-    env: { ...process.env, DATABASE_URL: url.toString() },
+    env: { ...process.env, DATABASE_URL_MIGRACAO: migracao, DATABASE_URL: app },
   });
+  if (app !== migracao) await garantirUsuarioApp(migracao, app);
 }

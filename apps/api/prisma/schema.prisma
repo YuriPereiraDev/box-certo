@@ -188,6 +188,7 @@ model Oficina {
   duracaoPadraoAgendamentoMin   Int                    @default(60) // duração de cada agendamento do cliente
   passoAgendaMin                Int                    @default(30) // de quanto em quanto tempo há horário livre
   janelaAgendamentoDias         Int                    @default(60) // até quantos dias à frente o cliente agenda
+  maxAgendamentosPorCliente     Int                    @default(3) // agendamentos futuros feitos pelo cliente
   proximoNumeroOS               Int                    @default(1) // sequencial da OS por oficina
   logoArquivoId                 String? // logo usado no PDF do orçamento
   termosAceitosEm               DateTime?
@@ -210,17 +211,18 @@ model Oficina {
 }
 
 model PlatformAdmin {
-  id            String                @id @default(uuid())
-  nome          String
-  email         String                @unique
-  senhaHash     String
-  isOwner       Boolean               @default(false)
-  permissoes    PermissaoPlataforma[]
-  totpSecret    String? // criptografado com AES-256-GCM
-  totpAtivadoEm DateTime? // 2FA só vale depois de confirmado com um código
-  ativo         Boolean               @default(true)
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
+  id              String                @id @default(uuid())
+  nome            String
+  email           String                @unique
+  senhaHash       String
+  isOwner         Boolean               @default(false)
+  permissoes      PermissaoPlataforma[]
+  totpSecret      String? // criptografado com AES-256-GCM
+  totpAtivadoEm   DateTime? // 2FA só vale depois de confirmado com um código
+  totpUltimoPasso Int? // último passo TOTP aceito (impede reusar o mesmo código)
+  ativo           Boolean               @default(true)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
 }
 
 model User {
