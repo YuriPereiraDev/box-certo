@@ -7,6 +7,7 @@
 // Fase 5: estoque (e o mínimo de despesas para a despesa automática da entrada).
 // Fase 6: despesas completas (recorrentes, salários, comprovantes).
 // Fase 8: plataforma (avisos, modo suporte, histórico de status da oficina).
+// Fase 9: tickets de suporte.
 // Os demais modelos entram nas fases seguintes.
 
 generator client {
@@ -123,6 +124,19 @@ enum SubtipoSalario {
   FERIAS
   HORA_EXTRA
   BENEFICIO
+}
+
+enum TipoTicket {
+  ERRO
+  SUGESTAO
+  DUVIDA
+}
+
+enum StatusTicket {
+  ABERTO
+  EM_ANALISE
+  RESPONDIDO
+  RESOLVIDO
 }
 
 enum TipoAtor {
@@ -638,6 +652,45 @@ model AvisoGlobal {
   updatedAt   DateTime  @updatedAt
 
   @@index([ativo, inicio])
+}
+
+model Ticket {
+  id                 String           @id @default(uuid())
+  numero             Int              @unique @default(autoincrement())
+  oficinaId          String? // usuários da oficina; null para clientes
+  autorTipo          TipoAtor
+  autorId            String
+  autorNome          String
+  tipo               TipoTicket
+  titulo             String
+  descricao          String
+  status             StatusTicket     @default(ABERTO)
+  prioridade         Int              @default(0) // 0 normal, 1 alta, 2 urgente
+  atribuidoAId       String? // admin responsável
+  contexto           Json? // versão do app, aparelho, sistema, tela atual
+  primeiraRespostaEm DateTime? // primeira resposta pública do suporte
+  resolvidoEm        DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  mensagens          TicketMensagem[]
+
+  @@index([status, prioridade, createdAt])
+  @@index([autorTipo, autorId, createdAt])
+  @@index([oficinaId, createdAt])
+}
+
+model TicketMensagem {
+  id        String   @id @default(uuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id])
+  autorTipo TipoAtor
+  autorId   String
+  autorNome String
+  texto     String
+  interna   Boolean  @default(false) // nota do suporte: o usuário não vê
+  createdAt DateTime @default(now())
+
+  @@index([ticketId, createdAt])
 }
 
 // Somente INSERT: um trigger no banco bloqueia UPDATE, DELETE e TRUNCATE.

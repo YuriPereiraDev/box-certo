@@ -488,6 +488,67 @@ async function seedOficinaExemplo(prisma: PrismaClient) {
     });
   }
 
+  // Fase 9: tickets de exemplo (um respondido pelo suporte e uma dúvida de cliente).
+  if ((await prisma.ticket.count({ where: { oficinaId: oficina.id } })) === 0) {
+    const mecanico2 = await prisma.user.findFirstOrThrow({
+      where: { oficinaId: oficina.id, email: 'mecanico2@oficina-exemplo.local' },
+    });
+    const dono = await prisma.platformAdmin.findFirst({ where: { isOwner: true } });
+    const doMecanico = await prisma.ticket.create({
+      data: {
+        oficinaId: oficina.id,
+        autorTipo: 'USUARIO',
+        autorId: mecanico2.id,
+        autorNome: mecanico2.nome,
+        tipo: 'ERRO',
+        titulo: 'Foto da OS não aparece para o cliente',
+        descricao: 'Anexei 3 fotos na OS 2 e o cliente diz que não vê.',
+        contexto: {
+          versaoApp: '1.0.0',
+          aparelho: 'Moto G54',
+          sistema: 'Android 14',
+          rota: '/oficina/ordens-servico/2',
+        },
+        status: dono ? 'RESPONDIDO' : 'ABERTO',
+        atribuidoAId: dono?.id,
+        primeiraRespostaEm: dono ? new Date() : null,
+      },
+    });
+    if (dono) {
+      await prisma.ticketMensagem.createMany({
+        data: [
+          {
+            ticketId: doMecanico.id,
+            autorTipo: 'PLATAFORMA',
+            autorId: dono.id,
+            autorNome: dono.nome,
+            texto: 'Verificar se o orçamento já foi enviado: fotos só aparecem depois do envio.',
+            interna: true,
+          },
+          {
+            ticketId: doMecanico.id,
+            autorTipo: 'PLATAFORMA',
+            autorId: dono.id,
+            autorNome: dono.nome,
+            texto:
+              'As fotos aparecem para o cliente depois que o orçamento é enviado. Pode enviar e conferir?',
+          },
+        ],
+      });
+    }
+    await prisma.ticket.create({
+      data: {
+        autorTipo: 'CLIENTE',
+        autorId: cliente.id,
+        autorNome: cliente.nome,
+        tipo: 'DUVIDA',
+        titulo: 'Posso aprovar só parte do orçamento?',
+        descricao: 'Quero fazer só a troca de pastilhas agora.',
+        contexto: { versaoApp: '1.0.0', sistema: 'iOS 18', rota: '/cliente/ordens-servico/2' },
+      },
+    });
+  }
+
   // Fase 4: ordens de serviço em vários status (só na primeira execução).
   if ((await prisma.ordemServico.count({ where: { oficinaId: oficina.id } })) === 0) {
     const mecanico1 = await prisma.user.findFirstOrThrow({

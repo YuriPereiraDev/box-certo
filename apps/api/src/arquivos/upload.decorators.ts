@@ -1,7 +1,7 @@
 import { UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBody, ApiConsumes } from '@nestjs/swagger';
-import { TAMANHO_MAX_IMAGEM } from './arquivos.service.js';
+import { TAMANHO_MAX_IMAGEM, TAMANHO_MAX_VIDEO } from './arquivos.service.js';
 
 /** Recebe um arquivo no campo multipart "arquivo" (até 10 MB). */
 export const uploadImagem = () =>
@@ -20,3 +20,9 @@ export const DocUpload = () => (alvo: object, chave: string, desc: PropertyDescr
     },
   })(alvo, chave, desc);
 };
+
+/** Anexo de ticket: foto ou vídeo (até 50 MB; o limite por tipo é conferido no service). */
+export const uploadAnexoTicket = () =>
+  UseInterceptors(
+    FileInterceptor('arquivo', { limits: { fileSize: TAMANHO_MAX_VIDEO, files: 1 } }),
+  );

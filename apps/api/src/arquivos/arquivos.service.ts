@@ -5,8 +5,24 @@ import { BancoService } from '../prisma/banco.service.js';
 import { StorageService } from './storage.service.js';
 
 export const TAMANHO_MAX_IMAGEM = 10 * 1024 * 1024;
+/** Vídeos de tickets: até 50 MB (a duração de até 2 min e a compressão ficam no app). */
+export const TAMANHO_MAX_VIDEO = 50 * 1024 * 1024;
 
-/** Tipos de imagem aceitos, reconhecidos pelos primeiros bytes (não pela extensão). */
+/** MP4, MOV, 3GP (caixa `ftyp`, que não seja HEIC) ou WEBM, pelos primeiros bytes. */
+export function detectarVideo(buffer: Buffer): { mime: string; extensao: string } | null {
+  if (buffer.length < 12) return null;
+  if (buffer.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))) {
+    return { mime: 'video/webm', extensao: 'webm' };
+  }
+  if (buffer.subarray(4, 8).toString() !== 'ftyp') return null;
+  const marca = buffer.subarray(8, 12).toString();
+  if (['heic', 'heix', 'mif1', 'msf1'].includes(marca)) return null;
+  if (marca === 'qt  ') return { mime: 'video/quicktime', extensao: 'mov' };
+  if (marca.startsWith('3g')) return { mime: 'video/3gpp', extensao: '3gp' };
+  return { mime: 'video/mp4', extensao: 'mp4' };
+}
+
+/** PDF, pelos primeiros bytes. */
 export function detectarPdf(buffer: Buffer): { mime: string; extensao: string } | null {
   return buffer.subarray(0, 5).toString() === '%PDF-'
     ? { mime: 'application/pdf', extensao: 'pdf' }
@@ -68,6 +84,56 @@ export class ArquivosService {
     return this.salvar(arquivo, dados, true);
   }
 
+  /**
+   * Anexos de ticket: imagem (até 10 MB) ou vídeo (até 50 MB). O ticket pode não ter
+   * oficina (cliente), então grava pelo cliente `sistema` com o oficinaId do próprio ticket.
+   */
+  async salvarAnexoTicket(
+    arquivo: Express.Multer.File | undefined,
+    dados: { oficinaId: string | null; ticketId: string; ator: Ator },
+  ) {
+    if (!arquivo?.buffer?.length)
+      throw new BadRequestException('Envie o arquivo no campo "arquivo"');
+    const imagem = detectarImagem(arquivo.buffer);
+    const tipo = imagem ?? detectarVideo(arquivo.buffer);
+    if (!tipo) {
+      throw new BadRequestException(
+        'Formato não aceito. Envie foto (JPG, PNG, WEBP, HEIC) ou vídeo (MP4, MOV, WEBM, 3GP).',
+      );
+    }
+    if (imagem && arquivo.size > TAMANHO_MAX_IMAGEM) {
+      throw new BadRequestException('A foto pode ter no máximo 10 MB');
+    }
+    if (!imagem && arquivo.size > TAMANHO_MAX_VIDEO) {
+      throw new BadRequestException('O vídeo pode ter no máximo 50 MB (e até 2 minutos)');
+    }
+    const chave = `tickets/${dados.ticketId}/${randomUUID()}.${tipo.extensao}`;
+    await this.storage.enviar(chave, arquivo.buffer, tipo.mime);
+    try {
+      return await this.banco.sistema.arquivo.create({
+        data: {
+          oficinaId: dados.oficinaId,
+          chave,
+          nomeOriginal: arquivo.originalname?.slice(0, 200) || null,
+          mime: tipo.mime,
+          tamanhoBytes: arquivo.size,
+          entidade: 'TICKET',
+          entidadeId: dados.ticketId,
+          enviadoPorTipo: dados.ator.tipo,
+          enviadoPorId: dados.ator.id,
+        },
+      });
+    } catch (erro) {
+      await this.storage.remover(chave).catch(() => undefined);
+      throw erro;
+    }
+  }
+
+  /** Conta arquivos ativos de uma entidade sem filtro de oficina (ex.: tickets). */
+  contarSemOficina(entidade: string, entidadeId: string) {
+    return this.banco.sistema.arquivo.count({ where: { entidade, entidadeId, deletedAt: null } });
+  }
+
   private async salvar(
     arquivo: Express.Multer.File | undefined,
     dados: { oficinaId: string; entidade: string; entidadeId: string; ator: Ator },
@@ -114,7 +180,11 @@ export class ArquivosService {
    * Lista arquivos de uma entidade com URL assinada. Quem chama já conferiu o acesso à
    * entidade; o oficinaId vem do token (oficina) ou da própria entidade (cliente).
    */
-  async listar(oficinaId: string, entidade: string, entidadeId: string): Promise<ArquivoPublico[]> {
+  async listar(
+    oficinaId: string | null,
+    entidade: string,
+    entidadeId: string,
+  ): Promise<ArquivoPublico[]> {
     const arquivos = await this.banco.sistema.arquivo.findMany({
       where: { oficinaId, entidade, entidadeId, deletedAt: null },
       orderBy: { createdAt: 'asc' },

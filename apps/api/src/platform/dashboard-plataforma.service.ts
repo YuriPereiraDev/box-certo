@@ -7,13 +7,14 @@ import { ROLES_QUE_CONTAM } from '../common/utils/plano.service.js';
 import { mesesAte, mesLocal, valorDaOs, type OsParaIndicador } from '../dashboards/agregacoes.js';
 import { BancoService } from '../prisma/banco.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { TicketsService } from '../tickets/tickets.service.js';
 import { mensalidade } from './oficinas-plataforma.service.js';
 import { podeVerValores } from './regras.js';
 
 /**
  * Dashboard da plataforma (seção 10). Valores (faturamento do Box Certo e ranking de
  * faturamento das oficinas) só para o dono ou admins com FINANCEIRO; para os demais vêm null.
- * Tickets entram na fase 9.
+ * Inclui os indicadores de tickets.
  */
 @Injectable()
 export class DashboardPlataformaService {
@@ -23,6 +24,7 @@ export class DashboardPlataformaService {
     private readonly banco: BancoService,
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly tickets: TicketsService,
   ) {}
 
   async montar(admin: AtorPlataforma) {
@@ -82,7 +84,7 @@ export class DashboardPlataformaService {
       },
       totais: { mecanicosAtivos: mecanicos, clientesAtivos: clientes },
       financeiro: podeVerValores(admin) ? await this.financeiro(inicioMes) : null,
-      tickets: null, // fase 9
+      tickets: await this.tickets.indicadores(),
     };
   }
 
