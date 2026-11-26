@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AgendamentosModule } from './agendamentos/agendamentos.module.js';
 import { ArquivosModule } from './arquivos/arquivos.module.js';
 import { OrdensServicoModule } from './ordens-servico/ordens-servico.module.js';
+import { EstoqueModule } from './estoque/estoque.module.js';
 import { AuditoriaInterceptor } from './auditoria/auditoria.interceptor.js';
 import { AuditoriaModule } from './auditoria/auditoria.module.js';
 import { AuthModule } from './auth/auth.module.js';
@@ -51,6 +52,7 @@ import { VeiculosModule } from './veiculos/veiculos.module.js';
     AgendamentosModule,
     ArquivosModule,
     OrdensServicoModule,
+    EstoqueModule,
   ],
   providers: [
     // A ordem importa: rate limit → autenticação → autorização.

@@ -43,3 +43,6 @@ export class BancoService {
     this.tenant = criarClienteTenant(this.sistema);
   }
 }
+
+/** Cliente dentro de `banco.sistema.$transaction(async (tx) => ...)`. */
+export type TransacaoSistema = Parameters<Parameters<ClienteSistema['$transaction']>[0]>[0];

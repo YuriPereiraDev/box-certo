@@ -8,6 +8,7 @@ import {
   IsOptional,
   IsString,
   IsUrl,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -39,6 +40,11 @@ export class CriarItemTabelaDto {
   @Min(1)
   @Max(10_000)
   tempoEstimadoMin?: number;
+
+  @ApiPropertyOptional({ description: 'Peça do estoque ligada a este item (só peças)' })
+  @IsOptional()
+  @IsUUID()
+  estoqueItemId?: string;
 
   @ApiPropertyOptional({ description: 'Link de afiliado padrão (só peças)' })
   @IsOptional()

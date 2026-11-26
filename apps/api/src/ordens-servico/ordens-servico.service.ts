@@ -7,6 +7,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { ArquivosService } from '../arquivos/arquivos.service.js';
+import { ReservasEstoqueService } from '../estoque/reservas-estoque.service.js';
 import type { AtorUsuario } from '../common/contexto/contexto.js';
 import { localParaUtc, somarDias } from '../common/utils/datas.js';
 import { ROLES_QUE_CONTAM } from '../common/utils/plano.service.js';
@@ -47,6 +48,7 @@ export class OrdensServicoService {
   constructor(
     private readonly banco: BancoService,
     private readonly arquivos: ArquivosService,
+    private readonly reservas: ReservasEstoqueService,
   ) {}
 
   // ----------------------------------------------------------------- acesso
@@ -234,9 +236,16 @@ export class OrdensServicoService {
 
   /**
    * Regra escolhida: qualquer alteração no orçamento depois do envio zera as respostas do
-   * cliente e a OS volta para EM_DIAGNOSTICO até ser reenviada.
+   * cliente e a OS volta para EM_DIAGNOSTICO até ser reenviada. As reservas de estoque das
+   * peças aprovadas são devolvidas. Chamar no INÍCIO da transação, antes de mexer no item
+   * (para liberar a reserva da peça antiga se o item trocar de peça).
    */
-  private async aposAlterarItens(tx: Tx, os: { id: string; status: StatusOS }) {
+  private async prepararAlteracaoDeItens(
+    tx: Tx,
+    os: { id: string; status: StatusOS },
+    ator: AtorUsuario,
+  ) {
+    await this.reservas.liberarDaOs(tx, os.id, ator, 'Orçamento alterado');
     if (os.status === 'ORCAMENTO_ENVIADO' || os.status === 'APROVADA') {
       await tx.itemOrcamento.updateMany({
         where: { ordemServicoId: os.id, deletedAt: null, statusCliente: { not: 'PENDENTE' } },
@@ -272,6 +281,7 @@ export class OrdensServicoService {
       precoUnitarioCentavos: atual?.precoUnitarioCentavos,
       linkAfiliado: atual?.linkAfiliado ?? undefined,
       tabelaPrecoId: atual?.tabelaPrecoId ?? undefined,
+      estoqueItemId: atual?.estoqueItemId ?? undefined,
     };
     if (dto.tabelaPrecoId) {
       const t = await this.banco.tenant.itemTabelaPreco.findFirst({
@@ -284,25 +294,60 @@ export class OrdensServicoService {
         precoUnitarioCentavos: t.precoCentavos,
         linkAfiliado: t.linkAfiliadoPadrao ?? undefined,
         tabelaPrecoId: t.id,
+        estoqueItemId: t.estoqueItemId ?? undefined,
       };
     }
-    const tipo = dto.tipo ?? base.tipo;
-    const descricao = dto.descricao ?? base.descricao;
-    if (!tipo || !descricao)
-      throw new BadRequestException('Informe a descrição e o tipo (ou um item da tabela)');
+    const estoqueItemId = dto.estoqueItemId ?? base.estoqueItemId;
+    const tipo = dto.tipo ?? base.tipo ?? (estoqueItemId ? 'PECA' : undefined);
 
-    const origemPeca = tipo === 'PECA' ? (dto.origemPeca ?? atual?.origemPeca ?? null) : null;
+    // Item da tabela ligado ao estoque (ou peça escolhida do estoque) assume a origem ESTOQUE.
+    const origemPeca =
+      tipo === 'PECA'
+        ? (dto.origemPeca ??
+          (dto.estoqueItemId || (dto.tabelaPrecoId && base.estoqueItemId)
+            ? 'ESTOQUE'
+            : undefined) ??
+          atual?.origemPeca ??
+          null)
+        : null;
     if (tipo === 'PECA' && !origemPeca) {
       throw new BadRequestException(
-        'Informe a origem da peça (COMPRADA_SEPARADO ou CLIENTE_COMPRA)',
+        'Informe a origem da peça (ESTOQUE, COMPRADA_SEPARADO ou CLIENTE_COMPRA)',
       );
     }
+
+    let peca: {
+      id: string;
+      nome: string;
+      precoVendaCentavos: number;
+      custoCentavos: number;
+    } | null = null;
+    const quantidade = dto.quantidade ?? atual?.quantidade ?? 1;
     if (origemPeca === 'ESTOQUE') {
-      throw new BadRequestException({
-        codigo: 'ORIGEM_ESTOQUE_INDISPONIVEL',
-        mensagem: 'Peças do estoque ficam disponíveis com o módulo de estoque',
+      if (!estoqueItemId) {
+        throw new BadRequestException('Peça do estoque: informe estoqueItemId');
+      }
+      const p = await this.banco.tenant.estoqueItem.findFirst({
+        where: { id: estoqueItemId, ativo: true },
       });
+      if (!p) throw new NotFoundException('Peça do estoque não encontrada');
+      // A reserva atual deste mesmo item volta ao disponível ao alterar o orçamento.
+      const devolvida = atual?.estoqueItemId === p.id ? atual.estoqueReservado : 0;
+      const disponivel = p.quantidade - p.quantidadeReservada + devolvida;
+      if (disponivel < quantidade) {
+        throw new UnprocessableEntityException({
+          codigo: 'ESTOQUE_INSUFICIENTE',
+          mensagem: `Só há ${disponivel} unidade(s) de "${p.nome}" disponível(is). Reduza a quantidade ou troque a origem da peça.`,
+          disponivel,
+        });
+      }
+      peca = p;
     }
+
+    const descricao =
+      dto.descricao ?? (dto.estoqueItemId ? peca?.nome : undefined) ?? base.descricao ?? peca?.nome;
+    if (!tipo || !descricao)
+      throw new BadRequestException('Informe a descrição e o tipo (ou um item da tabela)');
     if (dto.custoUnitarioCentavos !== undefined && !podeVerCusto(ator)) {
       throw new ForbiddenException('Só o master ou quem tem permissão FINANCEIRO informa o custo');
     }
@@ -311,22 +356,30 @@ export class OrdensServicoService {
     const preco =
       origemPeca === 'CLIENTE_COMPRA'
         ? 0
-        : (dto.precoUnitarioCentavos ?? base.precoUnitarioCentavos);
+        : (dto.precoUnitarioCentavos ??
+          (dto.estoqueItemId ? peca?.precoVendaCentavos : undefined) ??
+          base.precoUnitarioCentavos ??
+          peca?.precoVendaCentavos);
     if (preco === undefined) throw new BadRequestException('Informe o preço unitário em centavos');
+
+    // Custo: da peça do estoque (custo médio atual); senão o informado por MASTER/FINANCEIRO.
+    const custo = peca
+      ? { custoUnitarioCentavos: peca.custoCentavos }
+      : origemPeca === 'CLIENTE_COMPRA'
+        ? { custoUnitarioCentavos: null }
+        : dto.custoUnitarioCentavos !== undefined
+          ? { custoUnitarioCentavos: dto.custoUnitarioCentavos }
+          : {};
 
     return {
       descricao,
       tipo,
       origemPeca,
+      estoqueItemId: peca?.id ?? null,
       tabelaPrecoId: base.tabelaPrecoId ?? null,
-      quantidade: dto.quantidade ?? atual?.quantidade ?? 1,
+      quantidade,
       precoUnitarioCentavos: preco,
-      ...(dto.custoUnitarioCentavos !== undefined
-        ? {
-            custoUnitarioCentavos:
-              origemPeca === 'CLIENTE_COMPRA' ? null : dto.custoUnitarioCentavos,
-          }
-        : {}),
+      ...custo,
       linkAfiliado: tipo === 'PECA' ? (dto.linkAfiliado ?? base.linkAfiliado ?? null) : null,
     };
   }
@@ -335,10 +388,10 @@ export class OrdensServicoService {
     const os = await this.osEditavel(ator, id);
     const dados = await this.montarItem(ator, dto);
     await this.banco.sistema.$transaction(async (tx) => {
+      await this.prepararAlteracaoDeItens(tx, os, ator);
       await tx.itemOrcamento.create({
         data: { ...dados, oficinaId: os.oficinaId, ordemServicoId: os.id },
       });
-      await this.aposAlterarItens(tx, os);
     });
     return this.detalhar(ator, id);
   }
@@ -354,8 +407,8 @@ export class OrdensServicoService {
     const atual = this.itemDaOs(os, itemId);
     const dados = await this.montarItem(ator, dto, atual);
     await this.banco.sistema.$transaction(async (tx) => {
+      await this.prepararAlteracaoDeItens(tx, os, ator);
       await tx.itemOrcamento.update({ where: { id: itemId }, data: dados });
-      await this.aposAlterarItens(tx, os);
     });
     return this.detalhar(ator, id);
   }
@@ -365,8 +418,8 @@ export class OrdensServicoService {
     const os = await this.osEditavel(ator, id);
     this.itemDaOs(os, itemId);
     await this.banco.sistema.$transaction(async (tx) => {
+      await this.prepararAlteracaoDeItens(tx, os, ator);
       await tx.itemOrcamento.update({ where: { id: itemId }, data: { deletedAt: new Date() } });
-      await this.aposAlterarItens(tx, os);
     });
     return this.detalhar(ator, id);
   }
@@ -382,8 +435,8 @@ export class OrdensServicoService {
       throw new BadRequestException('A peça precisa ter sido recusada pelo cliente');
     }
     await this.banco.sistema.$transaction(async (tx) => {
+      await this.prepararAlteracaoDeItens(tx, os, ator);
       await tx.itemOrcamento.create({ data: itemPecaDoCliente(item, 'PENDENTE') });
-      await this.aposAlterarItens(tx, os);
     });
     return this.detalhar(ator, id);
   }
@@ -399,7 +452,8 @@ export class OrdensServicoService {
     if (os.itens.length === 0)
       throw new BadRequestException('Adicione ao menos um item antes de enviar');
     await this.banco.sistema.$transaction(async (tx) => {
-      // Cada envio pede a aprovação de todos os itens de novo.
+      // Cada envio pede a aprovação de todos os itens de novo (e devolve reservas antigas).
+      await this.reservas.liberarDaOs(tx, id, ator, 'Orçamento reenviado');
       await tx.itemOrcamento.updateMany({
         where: { ordemServicoId: id, deletedAt: null },
         data: { statusCliente: 'PENDENTE', respondidoEm: null },
@@ -431,6 +485,8 @@ export class OrdensServicoService {
     if (os.status !== 'EM_EXECUCAO') throw naoPermite('Só OS em execução podem ser concluídas');
     const agora = new Date();
     await this.banco.sistema.$transaction(async (tx) => {
+      // Saída do estoque das peças reservadas (baixa quantidade e reserva).
+      await this.reservas.baixarDaOs(tx, id, ator);
       await tx.ordemServico.update({
         where: { id },
         data: {
@@ -485,6 +541,7 @@ export class OrdensServicoService {
           motivoCancelamento: motivo,
         },
       });
+      await this.reservas.liberarDaOs(tx, id, ator, 'OS cancelada');
       await cancelarAgendamentoDaOs(tx, os.agendamentoId, 'USUARIO', motivo);
     });
     return this.detalhar(ator, id);

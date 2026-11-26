@@ -17,6 +17,10 @@ export const MODELOS_TENANT = new Set<string>([
   'OrdemServico',
   'ItemOrcamento',
   'Arquivo',
+  'EstoqueItem',
+  'MovimentoEstoque',
+  'CategoriaDespesa',
+  'Despesa',
 ]);
 
 const OPERACOES_COM_WHERE = new Set([

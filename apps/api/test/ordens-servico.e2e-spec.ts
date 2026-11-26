@@ -329,13 +329,13 @@ describe('Ordens de serviço e orçamento (e2e)', () => {
       expect((doFinanceiro.body as Os).itens[0].custoUnitarioCentavos).toBe(1_500);
     });
 
-    it('peça de ESTOQUE só com o módulo de estoque', async () => {
+    it('peça de ESTOQUE exige a peça do estoque', async () => {
       const r = await http()
         .post(`/oficina/ordens-servico/${osId}/itens`)
         .auth(mecanico, { type: 'bearer' })
         .send({ descricao: 'X', tipo: 'PECA', origemPeca: 'ESTOQUE', precoUnitarioCentavos: 100 })
         .expect(400);
-      expect(r.body.codigo).toBe('ORIGEM_ESTOQUE_INDISPONIVEL');
+      expect(r.body.mensagem).toMatch(/estoqueItemId/);
     });
 
     it('mecânico vê só as próprias OS; outro mecânico não acessa nem altera', async () => {

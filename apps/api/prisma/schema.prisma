@@ -4,6 +4,7 @@
 // Fase 2: horários, convites, tabela de preços e veículos.
 // Fase 3: agendamentos.
 // Fase 4: ordens de serviço, orçamento, descontos e arquivos.
+// Fase 5: estoque (e o mínimo de despesas para a despesa automática da entrada).
 // Os demais modelos entram nas fases seguintes.
 
 generator client {
@@ -99,6 +100,19 @@ enum StatusPagamento {
   PAGO_NA_OFICINA
 }
 
+enum TipoMovEstoque {
+  ENTRADA
+  SAIDA
+  RESERVA
+  LIBERACAO_RESERVA
+  AJUSTE
+}
+
+enum StatusDespesa {
+  A_PAGAR
+  PAGO
+}
+
 enum TipoAtor {
   PLATAFORMA
   USUARIO
@@ -159,6 +173,8 @@ model Oficina {
   veiculos                      VeiculoOficina[]
   agendamentos                  Agendamento[]
   ordemServicos                 OrdemServico[]
+  estoqueItens                  EstoqueItem[]
+  categoriasDespesa             CategoriaDespesa[]
 
   @@index([status])
 }
@@ -416,7 +432,10 @@ model ItemOrcamento {
   descricao             String
   tipo                  TipoItem
   origemPeca            OrigemPeca? // só para PECA
-  estoqueItemId         String? // quando origem = ESTOQUE (fase 5)
+  estoqueItemId         String? // quando origem = ESTOQUE
+  estoqueItem           EstoqueItem?      @relation(fields: [estoqueItemId], references: [id])
+  estoqueReservado      Int               @default(0) // quantidade reservada agora para este item
+  estoqueBaixado        Boolean           @default(false) // saída feita na conclusão da OS
   quantidade            Int               @default(1)
   precoUnitarioCentavos Int
   custoUnitarioCentavos Int? // sensível: só MASTER/FINANCEIRO
@@ -457,6 +476,94 @@ model Arquivo {
 
   @@index([entidade, entidadeId])
   @@index([oficinaId])
+}
+
+model EstoqueItem {
+  id                  String             @id @default(uuid())
+  oficinaId           String
+  oficina             Oficina            @relation(fields: [oficinaId], references: [id])
+  nome                String
+  codigo              String?
+  marca               String?
+  aplicacao           String?
+  quantidade          Int                @default(0)
+  quantidadeReservada Int                @default(0)
+  custoCentavos       Int                @default(0) // sensível: custo médio ponderado
+  precoVendaCentavos  Int
+  estoqueMinimo       Int                @default(0)
+  localizacao         String?
+  ativo               Boolean            @default(true)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  movimentos          MovimentoEstoque[]
+  itensOrcamento      ItemOrcamento[]
+
+  @@unique([oficinaId, codigo])
+  @@index([oficinaId, nome])
+}
+
+model MovimentoEstoque {
+  id                    String         @id @default(uuid())
+  oficinaId             String
+  estoqueItemId         String
+  estoqueItem           EstoqueItem    @relation(fields: [estoqueItemId], references: [id])
+  tipo                  TipoMovEstoque
+  quantidade            Int // ENTRADA/SAIDA/RESERVA/LIBERACAO: positiva; AJUSTE: diferença (+/-)
+  saldoQuantidade       Int // quantidade depois do movimento
+  saldoReservada        Int // reservada depois do movimento
+  custoUnitarioCentavos Int?
+  fornecedor            String?
+  notaFiscal            String?
+  ordemServicoId        String?
+  itemOrcamentoId       String?
+  motivo                String?
+  atorTipo              TipoAtor
+  usuarioId             String // quem fez (usuário da oficina ou cliente que aprovou)
+  createdAt             DateTime       @default(now())
+
+  @@index([estoqueItemId, createdAt])
+  @@index([oficinaId, createdAt])
+  @@index([ordemServicoId])
+}
+
+model CategoriaDespesa {
+  id        String    @id @default(uuid())
+  oficinaId String
+  oficina   Oficina   @relation(fields: [oficinaId], references: [id])
+  nome      String
+  ehSalario Boolean   @default(false) // protegida por VER_SALARIOS
+  padrao    Boolean   @default(false)
+  ativo     Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  despesas  Despesa[]
+
+  @@unique([oficinaId, nome])
+}
+
+// Fase 5 cria só o necessário para a despesa automática; o resto vem na fase 6.
+model Despesa {
+  id                 String           @id @default(uuid())
+  oficinaId          String
+  data               DateTime
+  descricao          String
+  valorCentavos      Int
+  categoriaId        String
+  categoria          CategoriaDespesa @relation(fields: [categoriaId], references: [id])
+  formaPagamento     String?
+  status             StatusDespesa
+  vencimento         DateTime?
+  pagoEm             DateTime?
+  recorrenteId       String?
+  funcionarioId      String? // pagamento de funcionário
+  subtipoSalario     String? // SALARIO, VALE, COMISSAO, DECIMO_TERCEIRO, FERIAS, HORA_EXTRA, BENEFICIO
+  movimentoEstoqueId String?          @unique
+  criadoPorId        String
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  deletedAt          DateTime?
+
+  @@index([oficinaId, data])
+  @@index([oficinaId, status, vencimento])
 }
 
 // Somente INSERT: um trigger no banco bloqueia UPDATE, DELETE e TRUNCATE.

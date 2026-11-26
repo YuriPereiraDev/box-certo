@@ -3,7 +3,15 @@ import type { Prisma, StatusOS } from '../generated/prisma/client.js';
 import { calcularTotais, valoresDoItem } from './calculo.js';
 
 export const INCLUDE_OS = {
-  itens: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' } },
+  itens: {
+    where: { deletedAt: null },
+    orderBy: { createdAt: 'asc' },
+    include: {
+      estoqueItem: {
+        select: { id: true, nome: true, codigo: true, quantidade: true, quantidadeReservada: true },
+      },
+    },
+  },
   cliente: { select: { id: true, nome: true, telefone: true, email: true, cpf: true } },
   veiculo: { select: { id: true, placa: true, marca: true, modelo: true, ano: true, cor: true } },
   mecanico: { select: { id: true, nome: true } },
@@ -65,6 +73,11 @@ function itemParaCliente(i: ItemOs) {
     linkAfiliado: i.tipo === 'PECA' ? i.linkAfiliado : null,
     comprarPeca: i.tipo === 'PECA' && !!i.linkAfiliado,
     statusCliente: i.statusCliente,
+    // Peça do estoque que acabou: o cliente vê que a oficina vai ajustar.
+    aguardandoAjusteDaOficina:
+      i.statusCliente === 'PENDENTE' &&
+      !!i.estoqueItem &&
+      i.estoqueItem.quantidade - i.estoqueItem.quantidadeReservada < i.quantidade,
     respondidoEm: i.respondidoEm,
     substituiItemId: i.substituiItemId,
   };

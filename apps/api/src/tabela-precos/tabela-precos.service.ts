@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { exigirOficinaId } from '../common/contexto/contexto.js';
+import type { TipoItem } from '../generated/prisma/client.js';
 import { BancoService } from '../prisma/banco.service.js';
 import type {
   AtualizarItemTabelaDto,
@@ -29,7 +30,19 @@ export class TabelaPrecosService {
     return item;
   }
 
-  criar(dto: CriarItemTabelaDto) {
+  /** A peça ligada precisa ser do estoque desta oficina, e só itens do tipo PECA se ligam. */
+  private async validarPecaDoEstoque(tipo: TipoItem, estoqueItemId: string | undefined | null) {
+    if (!estoqueItemId) return;
+    if (tipo !== 'PECA') throw new BadRequestException('Só itens do tipo PECA se ligam ao estoque');
+    const peca = await this.banco.tenant.estoqueItem.findFirst({
+      where: { id: estoqueItemId, ativo: true },
+      select: { id: true },
+    });
+    if (!peca) throw new NotFoundException('Peça do estoque não encontrada');
+  }
+
+  async criar(dto: CriarItemTabelaDto) {
+    await this.validarPecaDoEstoque(dto.tipo, dto.estoqueItemId);
     return this.banco.tenant.itemTabelaPreco.create({
       data: {
         ...dto,
@@ -42,9 +55,13 @@ export class TabelaPrecosService {
   async atualizar(id: string, dto: AtualizarItemTabelaDto) {
     const atual = await this.detalhar(id);
     const tipo = dto.tipo ?? atual.tipo;
+    await this.validarPecaDoEstoque(tipo, dto.estoqueItemId ?? atual.estoqueItemId);
     return this.banco.tenant.itemTabelaPreco.update({
       where: { id },
-      data: { ...dto, ...(tipo === 'MAO_DE_OBRA' ? { linkAfiliadoPadrao: null } : {}) },
+      data: {
+        ...dto,
+        ...(tipo === 'MAO_DE_OBRA' ? { linkAfiliadoPadrao: null, estoqueItemId: null } : {}),
+      },
     });
   }
 

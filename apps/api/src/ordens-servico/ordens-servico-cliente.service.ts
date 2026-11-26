@@ -5,6 +5,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { ArquivosService } from '../arquivos/arquivos.service.js';
+import { ReservasEstoqueService } from '../estoque/reservas-estoque.service.js';
 import type { AtorCliente } from '../common/contexto/contexto.js';
 import type { StatusOS } from '../generated/prisma/client.js';
 import { BancoService } from '../prisma/banco.service.js';
@@ -35,6 +36,7 @@ export class OrdensServicoClienteService {
   constructor(
     private readonly banco: BancoService,
     private readonly arquivos: ArquivosService,
+    private readonly reservas: ReservasEstoqueService,
   ) {}
 
   async carregar(cliente: AtorCliente, id: string): Promise<OsCompleta> {
@@ -81,6 +83,7 @@ export class OrdensServicoClienteService {
     if (new Set(ids).size !== ids.length)
       throw new BadRequestException('Item repetido nas respostas');
 
+    const indisponiveis: { itemId: string; descricao: string }[] = [];
     await this.banco.sistema.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtext(${id}))) t`;
       const os = await tx.ordemServico.findFirst({
@@ -114,6 +117,15 @@ export class OrdensServicoClienteService {
             );
           }
         }
+        // Peça do estoque: a aprovação reserva a quantidade. Sem saldo, o item fica
+        // pendente ("a oficina vai ajustar") e a oficina troca a origem ou dá entrada.
+        if (r.aprovado && item.origemPeca === 'ESTOQUE') {
+          const reservou = await this.reservas.reservar(tx, item, cliente);
+          if (!reservou) {
+            indisponiveis.push({ itemId: item.id, descricao: item.descricao });
+            continue;
+          }
+        }
         await tx.itemOrcamento.update({
           where: { id: item.id },
           data: { statusCliente: r.aprovado ? 'APROVADO' : 'RECUSADO', respondidoEm: agora },
@@ -135,7 +147,14 @@ export class OrdensServicoClienteService {
           : { status: 'EM_DIAGNOSTICO' },
       });
     });
-    return this.detalhar(cliente, id);
+    const detalhe = await this.detalhar(cliente, id);
+    if (indisponiveis.length === 0) return detalhe;
+    return {
+      ...detalhe,
+      itensIndisponiveis: indisponiveis,
+      aviso:
+        'Algumas peças acabaram no estoque e ficaram pendentes. A oficina vai ajustar o orçamento e reenviar.',
+    };
   }
 
   async cancelar(cliente: AtorCliente, id: string, motivo?: string) {
@@ -157,6 +176,7 @@ export class OrdensServicoClienteService {
           motivoCancelamento: motivo ?? 'Cancelada pelo cliente',
         },
       });
+      await this.reservas.liberarDaOs(tx, id, cliente, 'OS cancelada pelo cliente');
       await cancelarAgendamentoDaOs(tx, os.agendamentoId, 'CLIENTE', motivo);
     });
     return this.detalhar(cliente, id);

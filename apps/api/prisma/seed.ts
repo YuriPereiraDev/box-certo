@@ -13,6 +13,7 @@ import argon2 from 'argon2';
 import { PermissaoPlataforma, PrismaClient } from '../src/generated/prisma/client.js';
 import { gerarCpf } from '../src/common/utils/cpf.js';
 import { dataLocal, localParaUtc, somarDias } from '../src/common/utils/datas.js';
+import { CATEGORIAS_PADRAO } from '../src/despesas/categorias-padrao.js';
 
 config({ path: ['.env', '../../.env'], quiet: true });
 
@@ -286,6 +287,108 @@ async function seedOficinaExemplo(prisma: PrismaClient) {
         },
       ],
     });
+  }
+
+  // Fase 5: categorias de despesa padrão e estoque com entradas (só na primeira execução).
+  await prisma.categoriaDespesa.createMany({
+    data: CATEGORIAS_PADRAO.map((c) => ({ ...c, oficinaId: oficina.id, padrao: true })),
+    skipDuplicates: true,
+  });
+  if ((await prisma.estoqueItem.count({ where: { oficinaId: oficina.id } })) === 0) {
+    const master = await prisma.user.findFirstOrThrow({
+      where: { oficinaId: oficina.id, role: 'MASTER' },
+    });
+    const pecas = [
+      {
+        nome: 'Óleo 5W30 sintético (1 L)',
+        codigo: 'OL-5W30',
+        quantidade: 24,
+        custo: 3200,
+        preco: 4990,
+        minimo: 10,
+        tabela: 'Óleo 5W30 sintético (1 L)',
+      },
+      {
+        nome: 'Filtro de óleo',
+        codigo: 'FO-100',
+        quantidade: 6,
+        custo: 1900,
+        preco: 3500,
+        minimo: 4,
+        tabela: 'Filtro de óleo',
+      },
+      {
+        nome: 'Pastilha de freio dianteira (jogo)',
+        codigo: 'PF-D01',
+        quantidade: 3,
+        custo: 11000,
+        preco: 18990,
+        minimo: 4,
+        tabela: 'Pastilha de freio dianteira (jogo)',
+      },
+      {
+        nome: 'Lâmpada H4',
+        codigo: 'LP-H4',
+        quantidade: 10,
+        custo: 1500,
+        preco: 2900,
+        minimo: 2,
+        tabela: null,
+      },
+    ];
+    const categoriaPecasId = (
+      await prisma.categoriaDespesa.findUniqueOrThrow({
+        where: { oficinaId_nome: { oficinaId: oficina.id, nome: 'Peças' } },
+      })
+    ).id;
+    for (const p of pecas) {
+      const item = await prisma.estoqueItem.create({
+        data: {
+          oficinaId: oficina.id,
+          nome: p.nome,
+          codigo: p.codigo,
+          quantidade: p.quantidade,
+          custoCentavos: p.custo,
+          precoVendaCentavos: p.preco,
+          estoqueMinimo: p.minimo,
+          localizacao: 'Prateleira A',
+        },
+      });
+      const movimento = await prisma.movimentoEstoque.create({
+        data: {
+          oficinaId: oficina.id,
+          estoqueItemId: item.id,
+          tipo: 'ENTRADA',
+          quantidade: p.quantidade,
+          saldoQuantidade: p.quantidade,
+          saldoReservada: 0,
+          custoUnitarioCentavos: p.custo,
+          fornecedor: 'Distribuidora Exemplo',
+          atorTipo: 'USUARIO',
+          usuarioId: master.id,
+        },
+      });
+      await prisma.despesa.create({
+        data: {
+          oficinaId: oficina.id,
+          data: new Date(),
+          descricao: `Compra de estoque: ${p.nome} (${p.quantidade} un.) — fornecedor Distribuidora Exemplo`,
+          valorCentavos: p.quantidade * p.custo,
+          categoriaId: categoriaPecasId,
+          status: 'PAGO',
+          pagoEm: new Date(),
+          formaPagamento: 'PIX',
+          movimentoEstoqueId: movimento.id,
+          criadoPorId: master.id,
+        },
+      });
+      if (p.tabela) {
+        await prisma.itemTabelaPreco.updateMany({
+          where: { oficinaId: oficina.id, nome: p.tabela },
+          data: { estoqueItemId: item.id },
+        });
+      }
+    }
   }
 
   // Fase 4: ordens de serviço em vários status (só na primeira execução).

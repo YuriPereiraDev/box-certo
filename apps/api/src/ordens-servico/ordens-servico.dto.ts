@@ -114,6 +114,13 @@ export class ItemOrcamentoDto {
   @IsEnum(OrigemPeca)
   origemPeca?: OrigemPeca;
 
+  @ApiPropertyOptional({
+    description: 'Peça do estoque (origem ESTOQUE; preço de venda e custo vêm dela)',
+  })
+  @IsOptional()
+  @IsUUID()
+  estoqueItemId?: string;
+
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
   @IsInt()

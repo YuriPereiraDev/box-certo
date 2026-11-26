@@ -5,6 +5,7 @@ import { AuthService, type RespostaLogin } from '../auth/auth.service.js';
 import { SenhaService } from '../auth/senha.service.js';
 import { contextoAtual, exigirOficinaId, type AtorUsuario } from '../common/contexto/contexto.js';
 import { horaParaMinutos } from '../common/utils/documentos.js';
+import { criarCategoriasPadrao } from '../despesas/categorias-padrao.js';
 import { BancoService } from '../prisma/banco.service.js';
 import type {
   AtualizarOficinaDto,
@@ -124,6 +125,7 @@ export class OficinasService {
           permissoes: [],
         },
       });
+      await criarCategoriasPadrao(tx, oficina.id);
       await tx.horarioFuncionamento.createMany({
         data: HORARIOS_PADRAO.map((h) => ({ ...h, oficinaId: oficina.id })),
       });
